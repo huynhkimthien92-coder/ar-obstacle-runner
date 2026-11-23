@@ -669,7 +669,7 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('resize', () => { renderer.resize(); renderer.setWorld(null, null); updateMapper(); });
 
 // ---------------- Buttons ----------------
-$('btn-tv').onclick = () => { $('tv-code').value = store.get('tvCode', ''); $('tv-status').textContent = ''; $('tv-display-url').textContent = new URL('display.html', location.href).href; $('dlg-tv').showModal(); };
+$('btn-tv').onclick = () => { $('tv-code').value = store.get('tvCode', ''); $('tv-status').textContent = ''; $('tv-display-url').textContent = new URL('./', location.href).href.replace(/^https:\/\//, '') + '  (TV tự chuyển sang trang màn hình)'; $('dlg-tv').showModal(); };
 $('btn-tv-mirror').onclick = async () => { chooseOutput('tv'); link.close(); audioToLocal(); $('dlg-tv').close(); await fullscreenLandscape(); applyOutput(); startCameraFlow(); };
 $('btn-tv-connect').onclick = connectWifi;
 $('btn-cam').onclick = () => { chooseOutput('phone'); link.close(); audioToLocal(); applyOutput(); startCameraFlow(); };

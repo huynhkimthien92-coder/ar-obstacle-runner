@@ -16,6 +16,15 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="preconnect" href="https://storage.googleapis.com" crossorigin>
   <link rel="stylesheet" href="css/style.css">
+  <script>
+    // Mở link game bằng trình duyệt TV → tự chuyển sang trang màn hình, khỏi gõ thêm "display.html" bằng điều khiển.
+    // Thêm ?phone vào link nếu muốn ép mở giao diện điện thoại.
+    (function () {
+      var ua = navigator.userAgent || '';
+      if (/SMART-TV|SmartTV|Tizen|Web0S|webOS|NetCast|HbbTV|BRAVIA|GoogleTV|Android TV|AFT[A-Z]|CrKey|Viera|AQUOSBrowser|VIDAA|Hisense|TV Safari/i.test(ua)
+          && !/[?&]phone/.test(location.search)) location.replace('display.html');
+    })();
+  </script>
 </head>
 <body>
   <video id="cam" playsinline muted autoplay aria-hidden="true"></video>
@@ -51,6 +60,7 @@
         <button id="btn-settings" class="btn small">Cài đặt</button>
         <button id="btn-install" class="btn small" hidden>Cài app</button>
       </div>
+      <a class="btn small tvlink" href="display.html">📺 Thiết bị này là TV / laptop nối máy chiếu → làm màn hình</a>
       <p class="best">Kỷ lục: <b id="best">0</b></p>
       <p class="tiny">Ảnh camera xử lý ngay trên máy, không gửi đi đâu.</p>
     </div>
