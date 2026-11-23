@@ -54,6 +54,7 @@
       <p id="game-desc" class="tiny"></p>
       <button id="btn-tv" class="btn primary">📺 Chơi trên TV / máy chiếu</button>
       <button id="btn-cam" class="btn">📱 Chơi trên màn hình điện thoại</button>
+      <button id="btn-setup" class="btn small">🎥 Kiểm tra góc camera trước</button>
       <button id="btn-manual" class="btn small">👆 Thử bằng vuốt / phím (không camera)</button>
       <div class="row">
         <button id="btn-help" class="btn small">Hướng dẫn</button>
@@ -82,8 +83,18 @@
     <div class="bottom-bar">
       <button id="btn-calib-back" class="btn small">← Menu</button>
       <button id="btn-flip" class="btn small">🔄 Đổi camera</button>
-      <button id="btn-calib-lag" class="btn small">⏱ Đo độ trễ</button>
+      <button id="btn-calib-setup" class="btn small">🎥 Chỉnh góc</button>
+      <button id="btn-calib-lag" class="btn small">⏱ Đo trễ</button>
       <button id="btn-calib-start" class="btn small primary" disabled>Bắt đầu</button>
+    </div>
+  </section>
+
+  <!-- CHỈNH GÓC CAMERA -->
+  <section id="scr-setup" class="screen overlay">
+    <div class="bottom-bar">
+      <button id="btn-setup-back" class="btn small">← Menu</button>
+      <button id="btn-setup-flip" class="btn small">🔄 Đổi camera</button>
+      <button id="btn-setup-done" class="btn small primary">✓ Xong, vào chơi</button>
     </div>
   </section>
 
@@ -120,7 +131,7 @@
   <!-- TV -->
   <dialog id="dlg-tv">
     <h2>📺 Chơi trên TV / máy chiếu</h2>
-    <p class="tiny">Đặt điện thoại <b>nằm ngang</b> ngay dưới (hoặc trên) giữa màn hình lớn, camera trước hướng về chỗ chơi, cao ngang hông–ngực. Người chơi đứng cách ~2,5–3 m và nhìn lên TV.</p>
+    <p class="tiny">Mẹo: bấm <b>🎥 Chỉnh góc</b> ở màn hiệu chỉnh để xem camera đã đặt đúng chưa (thấy đủ đầu–chân, đứng giữa, ánh sáng, máy thẳng). Đặt điện thoại <b>nằm ngang</b> ngay dưới (hoặc trên) giữa màn hình lớn, camera trước hướng về chỗ chơi, cao ngang hông–ngực. Người chơi đứng cách ~2,5–3 m và nhìn lên TV.</p>
     <div class="opt">
       <h3>Cách 1 · Cáp HDMI hoặc phản chiếu màn hình</h3>
       <p class="tiny">Cáp USB-C/Lightning → HDMI, hoặc phản chiếu không dây: Smart View (Samsung), Cast màn hình (Chromecast/Android TV), AirPlay (iPhone → Apple TV/TV hỗ trợ AirPlay). Bật phản chiếu trước, rồi bấm nút dưới.</p>

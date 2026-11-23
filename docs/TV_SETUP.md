@@ -18,6 +18,14 @@
 - Ánh sáng: sáng đều, tránh đứng ngược sáng (cửa sổ sau lưng).
 - **Cắm sạc** cho điện thoại: chạy camera + AI + phát hình liên tục rất tốn pin và làm máy nóng.
 
+## Kiểm tra góc camera trước khi chơi
+Menu → **🎥 Kiểm tra góc camera trước** (hoặc nút **🎥 Chỉnh góc** ở màn hiệu chỉnh). Màn này **không tự vào game**, chỉ hiện hình camera kèm:
+- **Bảng kiểm tra** cập nhật liên tục: thấy đầu, thấy cả bàn chân (hoặc tới hông khi đứng gần), khoảng cách ước lượng, đứng giữa khung, còn chỗ sàn trước chân, ánh sáng (tối / ngược sáng), máy đứng thẳng, tốc độ nhận diện. Dòng nào chưa đạt sẽ có màu vàng, kèm cách sửa.
+- **3 làn** (vạch đứt), **mặt sàn** (vạch xanh dưới chân) và **lưới ô** xem trước của game Ô an toàn.
+- **Thước thăng bằng** (bọt nước): bọt nằm giữa là máy đứng thẳng. iPhone sẽ hỏi quyền dùng cảm biến chuyển động, bấm Cho phép.
+- Xong thì bấm **✓ Xong, vào chơi**, hoặc **giơ 2 tay 1,5 s** nếu đang đứng xa.
+Nếu đang chiếu lên TV, màn này hiện luôn trên TV, nên bạn vừa nhìn TV vừa chỉnh máy.
+
 ## 3 cách đưa hình lên TV
 | Cách | Cần gì | Độ trễ hình (ước lượng) | Ghi chú |
 |---|---|---|---|

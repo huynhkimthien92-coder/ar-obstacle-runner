@@ -3,6 +3,7 @@
 import { CONFIG } from './config.js';
 import { T } from './levels.js';
 import { SKELETON } from './pose.js';
+import { TileGeom } from './tiles.js';
 
 const R = CONFIG.RENDER;
 
@@ -139,12 +140,24 @@ export class Renderer {
     }
     if (ui.panel) {
       const p = ui.panel, lines = p.lines || [];
+      if (p.side) { // bảng nhỏ bên trái (màn chỉnh góc camera): chữ nhỏ hơn, chừa chỗ nhìn người
+        const portrait = H > W, lh = 30, bw = portrait ? W * 0.94 : Math.min(W * 0.5, 560 * u), bh = (62 + lines.length * lh) * u;
+        const bx = portrait ? (W - bw) / 2 : 16 * u, by = 16 * u;
+        ctx.fillStyle = 'rgba(5,8,30,0.72)';
+        ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx, by, bw, bh, 18 * u) : ctx.rect(bx, by, bw, bh); ctx.fill();
+        const tx = bx + 18 * u;
+        text(p.title, tx, by + 30 * u, 28, p.color || '#fff', 'left');
+        lines.forEach((l, i) => { const o = typeof l === 'string' ? { text: l } : l; text(o.text, tx, by + (66 + i * lh) * u, 20, o.color || '#dfe6ff', 'left', 700); });
+        if (ui.level != null) this.level(portrait ? W / 2 : W - 130 * u, portrait ? by + bh + 30 * u : 40 * u, ui.level); // chừa hàng nút ở dưới
+        if (ui.corner) text(ui.corner, W - 18 * u, H - 22 * u, 20, ui.cornerColor || '#9fffcf', 'right', 600);
+        ctx.restore(); return;
+      }
       const bw = Math.min(W * 0.86, 980 * u), bh = (96 + lines.length * 46 + (p.progress != null ? 40 : 0)) * u;
       const bx = (W - bw) / 2, by = p.top ? (ui.hud ? 130 : 24) * u : (H - bh) / 2;
       ctx.fillStyle = 'rgba(5,8,30,0.74)';
       ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx, by, bw, bh, 22 * u) : ctx.rect(bx, by, bw, bh); ctx.fill();
       text(p.title, W / 2, by + 50 * u, 46, p.color || '#fff');
-      lines.forEach((l, i) => text(l, W / 2, by + (104 + i * 46) * u, 28, '#dfe6ff', 'center', 600));
+      lines.forEach((l, i) => { const o = typeof l === 'string' ? { text: l } : l; text(o.text, W / 2, by + (104 + i * 46) * u, 28, o.color || '#dfe6ff', 'center', 600); });
       if (p.progress != null) {
         const pw = bw * 0.6, px = (W - pw) / 2, py = by + bh - 34 * u;
         ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(px, py, pw, 12 * u);
@@ -230,6 +243,39 @@ export class Renderer {
       ctx.fillStyle = '#fff'; ctx.font = `900 ${Math.round(22 * this.u)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('P1', ce.x, ce.y);
     }
     this.effects(dt);
+  }
+
+  /** Màn chỉnh góc camera: làn, mặt sàn + lưới ô xem trước, khung xương, vùng bị cắt, thước thăng bằng. */
+  setupView(pts, info, tSec) {
+    const { ctx, W, H } = this, u = this.u;
+    this.clear();
+    ctx.save();
+    ctx.setLineDash([12, 10]); ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 2;
+    for (const x of [W / 3, 2 * W / 3]) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    ctx.setLineDash([]);
+    ctx.font = `700 ${Math.round(16 * u)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ['làn trái', 'làn giữa', 'làn phải'].forEach((t, i) => ctx.fillText(t, W * (i + 0.5) / 3, H * 0.5));
+    if (info.groundY) {
+      const g = new TileGeom(W, H, info.tileRows || 3, W > H ? 4 : 3, Math.min(H * 0.9, info.groundY));
+      ctx.strokeStyle = 'rgba(125,255,176,0.45)'; ctx.lineWidth = 2;
+      for (let r = 0; r < 3; r++) for (let c = 0; c < g.cols; c++) { const q = g.quad(r, c); ctx.beginPath(); q.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.stroke(); }
+      ctx.strokeStyle = '#7dffb0'; ctx.lineWidth = 3 * u;
+      ctx.beginPath(); ctx.moveTo(0, info.groundY); ctx.lineTo(W, info.groundY); ctx.stroke();
+      ctx.fillStyle = '#7dffb0'; ctx.textAlign = 'right'; ctx.fillText('mặt sàn (chân)', W - 12 * u, info.groundY - 8 * u);
+    }
+    if (pts) this.skeleton(pts, null, null, tSec);
+    ctx.fillStyle = 'rgba(255,60,60,0.35)';
+    if (info.headCut) ctx.fillRect(0, 0, W, H * 0.05);
+    if (info.feetCut) ctx.fillRect(0, H * 0.95, W, H * 0.05);
+    ctx.restore();
+  }
+
+  /** Thước thăng bằng (bọt nước): lệch khỏi giữa = máy đang nghiêng. */
+  level(cx, cy, dev) {
+    const { ctx } = this, u = this.u, w = 200 * u, k = Math.max(-1, Math.min(1, dev / 15)), good = Math.abs(dev) < 4;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(cx - w / 2, cy - 14 * u, w, 28 * u, 14 * u) : ctx.rect(cx - w / 2, cy - 14 * u, w, 28 * u); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, cy - 14 * u); ctx.lineTo(cx, cy + 14 * u); ctx.stroke();
+    ctx.fillStyle = good ? '#7dffb0' : '#ffcc00'; ctx.beginPath(); ctx.arc(cx + k * (w / 2 - 14 * u), cy, 10 * u, 0, Math.PI * 2); ctx.fill();
   }
 
   /** Mini-game đo độ trễ: bóng rơi xuống vạch theo nhịp, người chơi nhảy đúng lúc chạm vạch. */

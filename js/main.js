@@ -53,7 +53,7 @@ const bodyMode = () => (settings.bodyMode === 'auto' ? (tvOut() ? 'full' : 'near
 
 // ---------------- UI helpers ----------------
 function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id)); }
-function setMode(m) { app.mode = m; ui.cue = null; if (m !== 'calib' && m !== 'lagtest' && m !== 'over') ui.panel = null; }
+function setMode(m) { app.mode = m; ui.cue = null; if (m !== 'setup') ui.level = null; if (m !== 'calib' && m !== 'lagtest' && m !== 'over' && m !== 'setup') ui.panel = null; }
 let hintText = '';
 function setHint(text) {
   ui.hint = text || '';
@@ -120,7 +120,7 @@ async function startCameraFlow() {
     }
     await app.pose.setNumPoses(isTiles() ? 4 : 1);
     bench.info = { delegate: app.pose.delegate, model: app.pose.model, video: `${video.videoWidth}x${video.videoHeight}`, facing: settings.facing, output: settings.output };
-    enterCalibration();
+    if (app.afterCamera === 'setup') { app.afterCamera = null; enterSetup(); } else enterCalibration();
   } catch (e) {
     console.error(e);
     const camErr = e?.name && /NotAllowed|NotFound|NotReadable|Overconstrained|Security|Abort/.test(e.name);
@@ -255,6 +255,92 @@ function calibFrame(now) {
   $('btn-calib-start').disabled = !(s.calibrated || tilesReady);
   ui.panel = { title, lines, color, top: true, progress: s.calibrated || tilesReady ? null : s.calibProgress || null };
   renderer.calibration(app.pts, s, now / 1000);
+}
+
+// ---------------- Chỉnh góc camera ----------------
+// Màn riêng để dựng máy cho chuẩn TRƯỚC khi chơi: không tự vào game, kiểm tra liên tục và chỉ cách sửa.
+function askMotionPermission() { // iOS cần xin quyền cảm biến nghiêng trong lúc bấm nút
+  try { window.DeviceMotionEvent?.requestPermission?.().catch(() => {}); } catch { /* */ }
+}
+window.addEventListener('devicemotion', e => {
+  const g = e.accelerationIncludingGravity;
+  if (g && g.x != null) app.grav = { x: g.x, y: g.y, z: g.z, at: performance.now() };
+});
+function levelInfo() {
+  const g = app.grav;
+  if (!g || performance.now() - g.at > 2000) return null;
+  if (Math.abs(g.z) > 8) return { flat: true };
+  const a = Math.atan2(g.x, g.y) * 180 / Math.PI; // nghiêng trong mặt phẳng màn hình
+  return { flat: false, dev: a - 90 * Math.round(a / 90) };
+}
+const lightCv = document.createElement('canvas'); lightCv.width = 64; lightCv.height = 36;
+const lightCtx = lightCv.getContext('2d', { willReadFrequently: true });
+function measureLight(now) {
+  if (now - (app.lightAt || 0) < 500 || !video.videoWidth) return;
+  app.lightAt = now;
+  lightCtx.drawImage(video, 0, 0, 64, 36);
+  const d = lightCtx.getImageData(0, 0, 64, 36).data;
+  let box = null;
+  if (app.raw && motion.state.present) {
+    const vis = app.raw.filter(p => p.v > 0.5);
+    if (vis.length > 4) box = { x0: Math.min(...vis.map(p => p.x)), x1: Math.max(...vis.map(p => p.x)), y0: Math.min(...vis.map(p => p.y)), y1: Math.max(...vis.map(p => p.y)) };
+  }
+  let sum = 0, pin = 0, pn = 0;
+  for (let y = 0; y < 36; y++) for (let x = 0; x < 64; x++) {
+    const i = (y * 64 + x) * 4, l = 0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2];
+    sum += l;
+    if (box && x / 64 >= box.x0 && x / 64 <= box.x1 && y / 36 >= box.y0 && y / 36 <= box.y1) { pin += l; pn++; }
+  }
+  const n = 64 * 36, mean = sum / n, inside = pn ? pin / pn : mean, outside = n - pn ? (sum - pin) / (n - pn) : mean;
+  app.light = { mean, backlit: pn > 30 && outside - inside > 55 };
+}
+function setupChecks() {
+  const s = motion.state, raw = app.raw, full = motion.mode === 'full', L = [];
+  const add = (ok, good, bad) => L.push({ ok, text: ok ? '✓ ' + good : '✗ ' + bad, color: ok ? '#7dffb0' : '#ffcc66' });
+  const info = { headCut: false, feetCut: false, groundY: renderer.groundY, level: null, tileRows: full && s.fullBody ? 3 : 1 };
+  if (!s.present || !raw) add(false, '', 'Chưa thấy người — đứng vào trước camera');
+  else {
+    const v = (i, m = 0.5) => raw[i] && raw[i].v >= m;
+    const headOk = v(0, 0.4) && raw[0].y > 0.04;
+    info.headCut = !headOk;
+    add(headOk, 'Thấy đầu', 'Đầu bị cắt — lùi ra xa, hoặc ngả camera lên');
+    if (full) { info.feetCut = !s.fullBody; add(s.fullBody, 'Thấy cả bàn chân', 'Chân bị cắt — lùi ra xa, đặt máy thấp hơn, hoặc chúi camera xuống'); }
+    else add(s.hipsSeen, 'Thấy tới hông', 'Chưa thấy hông — lùi ra một chút');
+    const d = s.distance;
+    add(d.hint === 'ok', `Khoảng cách tốt${d.meters ? ` (~${d.meters.toFixed(1)} m)` : ''}`, d.hint === 'closer' ? 'Hơi xa — tiến lại gần' : 'Hơi gần — lùi ra xa');
+    const cx = s.laneX;
+    add(cx > 0.36 && cx < 0.64, 'Đứng giữa khung', cx <= 0.36 ? 'Lệch về bên trái màn hình — bước sang phải' : 'Lệch về bên phải màn hình — bước sang trái');
+    if (full && s.fullBody) add(Math.max(raw[27].y, raw[28].y) < 0.9, 'Còn chỗ sàn trước chân (cho Ô an toàn)', 'Chân sát mép dưới — lùi lại, hoặc chúi camera xuống một chút');
+  }
+  const lt = app.light;
+  if (lt) {
+    if (lt.mean < 55) add(false, '', 'Phòng tối — bật thêm đèn');
+    else if (lt.backlit) add(false, '', 'Ngược sáng — đừng đứng quay lưng ra cửa sổ / đèn');
+    else add(true, 'Ánh sáng ổn', '');
+  }
+  const lv = levelInfo();
+  if (lv?.flat) add(false, '', 'Điện thoại đang nằm — dựng đứng lên');
+  else if (lv) { info.level = lv.dev; add(Math.abs(lv.dev) < 4, `Máy đứng thẳng (${Math.abs(lv.dev).toFixed(0)}°)`, `Máy nghiêng ${Math.abs(lv.dev).toFixed(0)}° — chỉnh cho thẳng`); }
+  const pf = bench.live().poseFps;
+  add(pf >= 12, `Nhận diện ${pf.toFixed(0)} lần/giây`, `Nhận diện chỉ ${pf.toFixed(0)} lần/giây — máy đang chậm, đóng bớt ứng dụng`);
+  return { L, info };
+}
+function enterSetup() {
+  motion.reset(); smoother.reset(); applySettings(); renderer.setWorld(null, null);
+  $('hud').hidden = true; setHint(''); ui.hud = null; ui.tiles = null;
+  app.handsSince = 0;
+  show('scr-setup'); setMode('setup');
+}
+function setupFrame(now) {
+  measureLight(now);
+  const { L, info } = setupChecks();
+  const allOk = L.length > 2 && L.every(x => x.ok);
+  const handsLine = motion.state.handsUp ? `🙌 Giữ 2 tay thêm ${Math.max(0, 1.5 - (now - (app.handsSince || now)) / 1000).toFixed(1)} s để vào chơi` : '🙌 Giơ 2 tay 1,5 s (hoặc bấm "Xong") để vào chơi';
+  ui.level = info.level;
+  ui.panel = { side: true, title: allOk ? '🎥 Góc camera đã ổn!' : '🎥 Chỉnh góc camera', color: allOk ? '#7dffb0' : '#fff', lines: [...L, { text: handsLine, color: '#d6e4ff' }] };
+  renderer.setupView(app.pts, info, now / 1000);
+  if (motion.state.handsUp) { app.handsSince ||= now; if (now - app.handsSince > 1500) { sfx.ok(); enterCalibration(); } }
+  else app.handsSince = 0;
 }
 
 // ---------------- Đo độ trễ màn hình ----------------
@@ -705,6 +791,15 @@ $('btn-export').onclick = () => {
   navigator.clipboard?.writeText(json).then(() => { $('btn-export').textContent = '✓ Đã copy JSON vào clipboard'; }).catch(() => {});
 };
 $('btn-calib-back').onclick = toMenu;
+$('btn-calib-setup').onclick = () => { askMotionPermission(); enterSetup(); };
+$('btn-setup').onclick = () => {
+  askMotionPermission(); unlockAudio();
+  if (settings.output === 'wifi' && !link.live) chooseOutput('phone');
+  app.afterCamera = 'setup'; applyOutput(); startCameraFlow();
+};
+$('btn-setup-back').onclick = toMenu;
+$('btn-setup-done').onclick = () => { sfx.ok(); enterCalibration(); };
+$('btn-setup-flip').onclick = async () => { settings.facing = settings.facing === 'user' ? 'environment' : 'user'; saveSettings(); app.afterCamera = 'setup'; await startCameraFlow(); };
 $('btn-calib-start').onclick = () => { unlockAudio(); beginPlay(); };
 $('btn-calib-lag').onclick = () => { unlockAudio(); startLagTest(startCountdown); };
 $('btn-flip').onclick = async () => { settings.facing = settings.facing === 'user' ? 'environment' : 'user'; saveSettings(); await startCameraFlow(); };
@@ -753,6 +848,7 @@ function loop(now) {
   if (app.input === 'camera' && app.mode !== 'menu') processPose(now);
   switch (app.mode) {
     case 'calib': calibFrame(now); break;
+    case 'setup': setupFrame(now); break;
     case 'lagtest': lagFrame(now); break;
     case 'countdown': countdownFrame(now, dt); break;
     case 'play': playFrame(now, dt); break;
