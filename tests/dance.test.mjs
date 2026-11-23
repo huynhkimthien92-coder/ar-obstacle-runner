@@ -111,3 +111,38 @@ test('màn tập: giữ đúng động tác 0,6 s thì qua; làm sai lâu quá t
   const ev = pr.drain(); assert.equal(ev.filter(e => e.kind === 'clap').length, 8); assert.equal(ev.at(-1).kind, 'done');
   assert.equal(PRACTICE_STEPS.length, 7);
 });
+
+test('chế độ bé: ~14 lượt, mỗi lượt 1–2 động tác chỉ trong UP/T/DN, 3 lượt đầu không ngồi, ếch không 2 lượt liền', async () => {
+  const { buildChart } = await import('../js/dance.js');
+  const song = { bpm: 112, offset: 1, downbeat: 0, duration: 88, energy: null };
+  for (let seed = 1; seed < 30; seed++) {
+    const ch = buildChart(song, { difficulty: 'kid', seed });
+    assert.ok(ch.kid); assert.ok(ch.turns.length <= 14 && ch.turns.length >= 10);
+    const play = ch.turns.filter(u => u.kind !== 'break');
+    for (const u of play) { assert.ok(u.n >= 1 && u.n <= 2); assert.ok(u.seq.every(p => ['UP', 'T', 'DN'].includes(p))); }
+    for (const u of ch.turns.slice(0, 3)) assert.ok(!u.seq.includes('DN'));
+    let prev = null; for (const u of play) { if (u.seq[0] === 'DN') assert.notEqual(prev, 'DN'); prev = u.seq.at(-1); }
+    assert.equal(ch.turns.at(-1).kind, 'finish'); assert.deepEqual(ch.turns.at(-1).seq, ['UP']);
+    assert.ok(ch.turns.at(-1).end < 75, 'bài cho bé ~1 phút');
+  }
+});
+
+test('chế độ bé: giơ 1 tay = cây, dang 1 tay = máy bay; vỗ sớm không phạt; không vỗ vẫn được khen; vỗ gần nhịp = TUYỆT VỜI', async () => {
+  const { buildChart, DanceGame, kidMatch } = await import('../js/dance.js');
+  assert.ok(kidMatch('UP', 'UL') && kidMatch('T', 'R') && kidMatch('T', 'T') && !kidMatch('DN', 'UP'));
+  const ch = buildChart({ bpm: 112, offset: 1, downbeat: 0, duration: 88 }, { difficulty: 'kid', seed: 3 });
+  const g = new DanceGame({ chart: ch });
+  const play = (u, { pose, clap }) => {
+    const alt = { UP: 'UL', T: 'R', DN: 'DN' };
+    let t = u.t0 + 0.01, k = 0;
+    for (; t < u.t0 + u.beat * 2; t += 1 / 30) g.update(t, null, t > u.t0 + 0.3 && t < u.t0 + 0.34 ? [t] : []); // vỗ sớm → bỏ qua
+    for (const p of u.seq) { for (let j = 0; j < 12; j++, t += 1 / 30) g.update(t, pose ? alt[p] : null); for (let j = 0; j < 4; j++, t += 1 / 30) g.update(t, null); k++; }
+    let sent = false; for (; t < u.end + 0.02; t += 1 / 30) { const c = clap != null && !sent && t >= u.finishAt + clap; if (c) sent = true; g.update(t, null, c ? [u.finishAt + clap] : []); }
+  };
+  const T = ch.turns.filter(u => u.kind !== 'break');
+  play(T[0], { pose: true, clap: 0.2 }); assert.equal(T[0] && g.counts.PERFECT, 1);
+  play(T[1], { pose: true, clap: null }); assert.equal(g.counts.COOL, 1);
+  play(T[2], { pose: true, clap: 0.4 }); assert.equal(g.counts.GREAT, 1);
+  play(T[3], { pose: false, clap: 0 }); assert.equal(g.counts.MISS, 1);
+  assert.ok(g.stars >= 2);
+});

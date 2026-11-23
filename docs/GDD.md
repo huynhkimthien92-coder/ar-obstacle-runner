@@ -94,6 +94,7 @@ Thời lượng phiên ngắn là cố ý: vận động toàn thân mệt nhanh
 - **Nhận diện động tác (js/dancepose.js):** góc tay so với phương thẳng đứng (buông < 40° · dang ngang 58–125° và tay phải duỗi · giơ > 135°, kể cả giơ chụm vào giữa đầu), thước đo = max(bề rộng vai, 0,55 × chiều dài thân) nên đứng hơi nghiêng vẫn đúng; cổ tay ra khỏi khung khi giơ cao → dùng hướng khuỷu; trễ ±8° + ổn định 2 khung chống chớp. Vỗ tay dùng điểm chưa làm mượt (đỡ trễ), khoảng cách nhỏ nhất giữa cổ tay/ngón trỏ/ngón út; bắt cả cú vỗ nhanh lọt giữa 2 khung (cực tiểu khép-mở nhanh), mốc thời gian = lúc 2 tay gần nhất.
 - **Màn TẬP (bật sẵn lần đầu):** 7 bước — 6 động tác (công chúa làm mẫu, giữ đúng 0,6 s là qua, vòng xanh tiến độ; 6 s chưa được thì hiện mẹo + góc tay game đo được; 16 s thì bỏ qua) rồi vỗ tay theo nhạc 8 phách sau 4 phách đếm → lấy độ lệch trung vị làm **độ trễ vỗ tay** của máy (camera + loa + phản xạ), dùng khi chấm. Xong tự vào bài.
 - **Bàn phím / thử không camera:** ← → ↑ ↓, Q/E (hoặc 7/9) chéo, Space = vỗ tay; chạm màn hình = vỗ tay.
+- **Chế độ 👶 Bé (4–6 tuổi):** chỉ 3 động tác to, đối xứng, không cần phân biệt trái/phải (trẻ tuổi này thường chưa chắc trái/phải, lại thêm hình lật gương): 🌳 "cao như cây" (giơ 1 hay 2 tay đều được) · ✈️ "máy bay" (dang 1 hay 2 tay) · 🐸 "ếch ngồi". Mỗi lượt 1 động tác (từ lượt 7 thỉnh thoảng 2), 3 lượt đầu không ngồi, ếch không 2 lượt liền, cứ 4 lượt nghỉ 1, ~14 lượt ≈ 1 phút. **Giọng đọc tiếng Việt** (Web Speech, có sẵn trên Android/iPhone) đọc động tác mỗi lượt + lời khen. Tiếng **"bốp"** đúng phách cuối để bé vỗ theo; vỗ tay sớm khi chưa làm động tác thì bỏ qua (không phạt). Chấm: làm được động tác + vỗ trong ±0,3 s = TUYỆT VỜI · vỗ lệch hơn (cửa sổ 0,9 phách) = GIỎI LẮM · không vỗ = ĐƯỢC RỒI · không làm = "CỐ LÊN NHÉ!" (không có chữ MISS, công chúa vẫn cười). Kết quả 1–3 ⭐ (luôn ≥ 1 sao). Màn Tập cho bé: 3 động tác + vỗ 4 lần, không dùng để đo độ trễ (trẻ vỗ chưa đều).
 - **Xếp hạng:** S ≥ 92% · A ≥ 80% · B ≥ 65% · C ≥ 45%; lưu điểm cao nhất theo từng bài.
 
 ## 4. Bảng kinh tế điểm (tuning)
@@ -120,6 +121,7 @@ Thời lượng phiên ngắn là cố ý: vận động toàn thân mệt nhanh
 - FPS < 24 kéo dài hoặc trễ camera→pose p95 > 150 ms = **hỏng** cảm giác (xem PERFORMANCE.md).
 
 ## Changelog
+- v2.5 (24/11/2026): Vũ hội — chế độ 👶 Bé 4–6 tuổi (3 động tác đối xứng, giọng đọc, tiếng "bốp", chấm dễ, sao), động tác mới ↔ dang 2 tay.
 - v2.4 (24/11/2026): Vũ hội — công chúa 3D từ mẫu VRoid CC0 + váy dạ hội/vương miện; bộ nhận diện động tác/vỗ tay mới (góc tay, trễ, dùng khuỷu khi tay ra khỏi khung, bắt vỗ nhanh); màn Tập 6 động tác + đo độ trễ vỗ tay.
 - v2.3 (24/11/2026): game thứ năm **Vũ hội công chúa** — lượt kiểu Audition (động tác theo thứ tự + vỗ tay đúng phách), PERFECT…MISS, FEVER, FINISH MOVE, 3 công chúa gốc, 2 bài có sẵn, nhập nhạc riêng có tự dò BPM, lưu bài trong máy.
 - v0.1 (23/11/2026): bản đầu, 5 loại chướng ngại + sao, 3 tier, tutorial 6 bước.

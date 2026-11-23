@@ -53,6 +53,7 @@ export const sfx = {
   go: () => tone(1320, 0.25, { type: 'sine', vol: 0.14 }),
   over: () => [523, 392, 330, 262].forEach((f, i) => tone(f, 0.22, { type: 'triangle', vol: 0.12, delay: i * 0.18 })),
   ok: () => tone(1046, 0.12, { type: 'sine', vol: 0.1 }),
+  bop: () => { noise(0.05, 0.4); tone(260, 0.07, { type: 'sine', slide: -80, vol: 0.14 }); }, // tiếng "bốp" báo lúc vỗ tay (chế độ bé)
   // Âm báo động tác — mỗi động tác một kiểu, nghe là biết không cần nhìn màn hình
   cue_jump: () => tone(500, 0.18, { type: 'sine', slide: 700, vol: 0.16 }),           // vút lên
   cue_duck: () => tone(900, 0.2, { type: 'sine', slide: -600, vol: 0.16 }),           // trượt xuống

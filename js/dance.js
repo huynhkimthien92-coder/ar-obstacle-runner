@@ -14,7 +14,20 @@ export const POSES = {
   UR: { icon: '↗', name: 'Giơ tay phải', color: '#9b8cff' },
   UP: { icon: '⬆', name: 'Giơ 2 tay', color: '#7dffb0' },
   DN: { icon: '⬇', name: 'Ngồi xuống', color: '#ffd23f' },
+  T:  { icon: '↔', name: 'Dang 2 tay', color: '#ff9de2' },
 };
+/**
+ * Chế độ BÉ (4–6 tuổi): 3 động tác to, đối xứng (không cần phân biệt trái/phải), gọi bằng hình ảnh quen thuộc + giọng đọc.
+ * Bé giơ 1 tay hay 2 tay đều được tính "cây cao"; dang 1 hay 2 tay đều là "máy bay".
+ */
+export const KID_POSES = {
+  UP: { emoji: '🌳', label: 'Cao như cây', say: 'Giơ hai tay lên thật cao như cái cây!' },
+  T:  { emoji: '✈️', label: 'Máy bay', say: 'Dang hai tay ra như máy bay!' },
+  DN: { emoji: '🐸', label: 'Ếch ngồi', say: 'Ngồi xuống như chú ếch!' },
+};
+const KID_ACCEPT = { UP: ['UP', 'UL', 'UR'], T: ['T', 'L', 'R'], DN: ['DN'] };
+export const KID_GRADE = { PERFECT: 'TUYỆT VỜI!', GREAT: 'GIỎI LẮM!', COOL: 'ĐƯỢC RỒI!', BAD: 'ĐƯỢC RỒI!', MISS: 'CỐ LÊN NHÉ!' };
+export const KID_CFG = { maxTurns: 14, breakEvery: 4, perfect: 0.3, holdSec: 0.2 };
 export const GRADES = ['PERFECT', 'GREAT', 'COOL', 'BAD', 'MISS'];
 export const DANCE_CFG = {
   turnBeats: 8,
@@ -42,6 +55,7 @@ export function danceBeat(bpm) {
  * @returns turns: [{ i, kind: 'normal'|'break'|'finish', t0, beat, beats, n, seq: [poseId], finishAt, lvl, energy }]
  */
 export function buildChart(song, { difficulty = 'normal', seed = 1 } = {}) {
+  if (difficulty === 'kid') return buildKidChart(song, seed);
   const c = DANCE_CFG, rand = rng(seed), beat = danceBeat(song.bpm), raw = 60 / song.bpm;
   const ratio = beat / raw;                                     // 1 phách nhảy = bao nhiêu phách gốc
   // phách đầu ô nhịp đầu tiên sau ≥ 2,5 s (đoạn dạo đầu)
@@ -71,6 +85,40 @@ export function buildChart(song, { difficulty = 'normal', seed = 1 } = {}) {
   }
   return { turns, beat, bpm: song.bpm, duration: song.duration };
 }
+/**
+ * Bài nhảy cho BÉ: ~1 phút, mỗi lượt 1 động tác (từ lượt 7: thỉnh thoảng 2), 3 lượt đầu chỉ "cây" và "máy bay",
+ * "ếch ngồi" không lặp 2 lượt liền; cứ 4 lượt nghỉ 1; lượt cuối là "cây cao" + pháo hoa.
+ */
+function buildKidChart(song, seed) {
+  const K = KID_CFG, rand = rng(seed), beat = danceBeat(song.bpm), raw = 60 / song.bpm, turnBeats = DANCE_CFG.turnBeats;
+  let t0 = song.offset + (song.downbeat || 0) * raw;
+  while (t0 < 2.5) t0 += 4 * raw;
+  const turns = []; let prev = null;
+  for (let i = 0; i < K.maxTurns && t0 + turnBeats * beat <= song.duration - 1; i++) {
+    const last = i === K.maxTurns - 1 || t0 + 2 * turnBeats * beat > song.duration - 1;
+    const isBreak = !last && i > 0 && (i + 1) % K.breakEvery === 0;
+    let seq = [];
+    if (last) seq = ['UP'];
+    else if (!isBreak) {
+      const pool = i < 3 ? ['UP', 'T'] : ['UP', 'T', 'DN'];
+      const n = i >= 6 && i % 3 === 0 ? 2 : 1;
+      while (seq.length < n) {
+        const p = pool[Math.floor(rand() * pool.length)];
+        if (p === seq[seq.length - 1] || (seq.length === 0 && p === prev) || (p === 'DN' && prev === 'DN')) continue;
+        seq.push(p);
+      }
+      prev = seq[seq.length - 1];
+    }
+    const end = t0 + turnBeats * beat;
+    turns.push({ i, kind: last ? 'finish' : isBreak ? 'break' : 'normal', t0, beat, beats: turnBeats, n: seq.length, seq, finishAt: end - beat, end, lvl: 1, energy: 0.5 });
+    t0 = end;
+    if (last) break;
+  }
+  return { turns, beat, bpm: song.bpm, duration: song.duration, kid: true };
+}
+/** Bé làm động tác `pose` có tính là `target` không (chế độ bé dễ tính hơn). */
+export function kidMatch(target, pose) { return !!pose && (KID_ACCEPT[target] || [target]).includes(pose); }
+
 /** Dãy động tác: không lặp liền nhau, NGỒI tối đa 1 lần / lượt và không ở đầu/cuối, cấp thấp chỉ dùng 3 động tác dễ. */
 function genSeq(rand, n, lvl, prev) {
   const pool = lvl <= 1 ? ['L', 'R', 'UP'] : lvl <= 2 ? ['L', 'R', 'UP', 'UL', 'UR'] : ['L', 'R', 'UP', 'UL', 'UR', 'DN'];
@@ -103,6 +151,8 @@ export class DanceGame {
   get turn() { return this.cur; }
   /** Thứ hạng cuối bài theo độ chính xác có trọng số. */
   get accuracy() { const w = { PERFECT: 1, GREAT: 0.8, COOL: 0.55, BAD: 0.2, MISS: 0 }; const tot = GRADES.reduce((s, g) => s + this.counts[g], 0); return tot ? GRADES.reduce((s, g) => s + w[g] * this.counts[g], 0) / tot : 0; }
+  /** Chế độ bé: luôn có ít nhất 1 sao. */
+  get stars() { const a = this.accuracy; return a >= 0.75 ? 3 : a >= 0.45 ? 2 : 1; }
   get rank() { const a = this.accuracy; return a >= 0.92 ? 'S' : a >= 0.8 ? 'A' : a >= 0.65 ? 'B' : a >= 0.45 ? 'C' : 'D'; }
 
   /**
@@ -124,16 +174,19 @@ export class DanceGame {
     if (!u) return;
     // giữ động tác đủ lâu mới tính
     if (pose !== this.hold.pose) this.hold = { pose, since: t };
-    const steady = pose && t - this.hold.since >= c.holdSec ? pose : null;
-    if (u.kind !== 'break' && !u.judged && u.idx < u.n && steady === u.seq[u.idx] && this.hold.used !== this.hold.since) {
+    const kid = !!this.chart.kid;
+    const steady = pose && t - this.hold.since >= (kid ? KID_CFG.holdSec : c.holdSec) ? pose : null;
+    const match = kid ? kidMatch(u.seq[u.idx], steady) : steady === u.seq[u.idx];
+    if (u.kind !== 'break' && !u.judged && u.idx < u.n && match && this.hold.used !== this.hold.since) {
       this.hold.used = this.hold.since;          // mỗi lần giữ chỉ tính 1 bước (đổi tư thế rồi mới tính bước kế)
       u.done[u.idx] = true; u.idx++;
       this.events.push({ kind: 'step', i: u.idx - 1, pose: steady, complete: u.idx === u.n });
     }
     // vỗ tay: chỉ vỗ trong cửa sổ quanh phách cuối
-    const W = Math.max(u.beat * 0.45, c.win.BAD + 0.05);
+    const W = kid ? u.beat * 0.9 : Math.max(u.beat * 0.45, c.win.BAD + 0.05);
     if (u.kind !== 'break' && !u.judged) {
       for (const ct of claps) {
+        if (kid && u.idx < u.n) continue; // bé vỗ tay sớm khi chưa làm động tác → bỏ qua, không phạt
         const d = ct - (u.finishAt + lag);
         if (Math.abs(d) <= W) { this._judge(d); break; }
       }
@@ -146,7 +199,9 @@ export class DanceGame {
     const c = this.cfg, u = this.cur;
     u.judged = true;
     let g = 'MISS';
-    if (delta != null && u.idx >= u.n) {
+    if (this.chart.kid) { // bé: làm được động tác là được khen; vỗ tay gần nhịp thì "tuyệt vời"
+      g = u.idx < u.n ? 'MISS' : delta == null ? 'COOL' : Math.abs(delta) <= KID_CFG.perfect ? 'PERFECT' : 'GREAT';
+    } else if (delta != null && u.idx >= u.n) {
       const a = Math.abs(delta);
       g = a <= c.win.PERFECT ? 'PERFECT' : a <= c.win.GREAT ? 'GREAT' : a <= c.win.COOL ? 'COOL' : a <= c.win.BAD ? 'BAD' : 'MISS';
     }
@@ -176,12 +231,12 @@ export const PRACTICE_CFG = { holdSec: 0.6, hintSec: 6, giveUpSec: 16, clapCount
  * Kết quả vỗ tay: độ lệch trung vị (giây) giữa lúc bạn vỗ và phách nhạc — dùng bù trễ khi chấm (camera + loa + màn hình).
  */
 export class DancePractice {
-  constructor({ beat, offset = 0, cfg = {} }) {
-    this.c = { ...PRACTICE_CFG, ...cfg }; this.beat = beat; this.offset = offset;
-    this.i = 0; this.held = 0; this.stepT = null; this.res = PRACTICE_STEPS.map(() => null);
+  constructor({ beat, offset = 0, cfg = {}, steps = PRACTICE_STEPS }) {
+    this.c = { ...PRACTICE_CFG, ...cfg }; this.beat = beat; this.offset = offset; this.steps = steps;
+    this.i = 0; this.held = 0; this.stepT = null; this.res = steps.map(() => null);
     this.clapStart = null; this.deltas = []; this.lag = null; this.done = false; this.events = [];
   }
-  get step() { return PRACTICE_STEPS[this.i]; }
+  get step() { return this.steps[this.i]; }
   get hint() { return this.stepT != null && this._now - this.stepT > this.c.hintSec; }
   /** Các phách cần vỗ (theo thời gian nhạc). */
   clapTargets() { if (this.clapStart == null) return []; return Array.from({ length: this.c.clapN }, (_, k) => this.clapStart + (this.c.clapCountIn + k) * this.beat); }

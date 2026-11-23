@@ -14,7 +14,8 @@ import { TileGame, TileGeom } from './tiles.js';
 import { Cutouts } from './cutout.js';
 import { FruitGame } from './fruits.js';
 import { DinoGame, RESP, STAGES } from './dino.js';
-import { DanceGame, buildChart, POSES as DANCE_POSES, DancePractice } from './dance.js';
+import { DanceGame, buildChart, POSES as DANCE_POSES, DancePractice, KID_POSES, KID_GRADE } from './dance.js';
+import { say, hush } from './voice.js';
 import { DancePoseDetector } from './dancepose.js';
 import { Princess3D } from './princess3d.js';
 import { MusicPlayer, BUILTIN, renderBuiltin, loadUserFile, listSavedSongs, loadSavedSong } from './music.js';
@@ -604,6 +605,7 @@ async function resume() {
   app.countEnd = performance.now() + 3000; app.lastCount = 0; setMode('countdown'); requestWakeLock();
 }
 function toMenu() {
+  hush();
   setMode('menu'); setHint(''); big(''); $('hud').hidden = true; releaseWakeLock();
   stopCamera(); video.classList.remove('on'); app.pts = null; app.game = null; app.practice = null; app.tg = null; app.fg = null; app.dg = null; app.dance = null; app.music.stop(); ui.hud = null; ui.tiles = null; ui.fruit = null; ui.dino = null; ui.fact = null; ui.dance = null;
   ui.panel = link.live ? { title: 'AR Obstacle Runner', lines: ['Chọn chế độ chơi trên điện thoại'] } : null;
@@ -1115,7 +1117,7 @@ function dinoOver() {
   app.handsSince = 0;
 }
 // ---------------- Game "Vũ hội công chúa" (kiểu Audition) ----------------
-const DIFF_NAME = { easy: 'Dễ', normal: 'Vừa', hard: 'Khó' };
+const DIFF_NAME = { kid: '👶 Bé', easy: 'Dễ', normal: 'Vừa', hard: 'Khó' };
 const CAM_LAT = 0.06; // camera → khung nhận diện ≈ 60 ms (trừ đi khi chấm thời điểm vỗ tay)
 /** Chuẩn bị bài đang chọn (bài có sẵn phải "tổng hợp" trước ~1 s). */
 async function ensureSong() {
@@ -1148,7 +1150,9 @@ function newDance() {
   }
   const chart = buildChart(app.song, { difficulty: settings.danceDiff || 'normal', seed: (Math.random() * 2 ** 31) | 0 });
   app.dance = new DanceGame({ chart, lagMs: danceLag() });
-  app.practice = wantPractice() ? new DancePractice({ beat: chart.beat, offset: app.song.offset || 0 }) : null;
+  const kid = settings.danceDiff === 'kid';
+  app.practice = wantPractice() ? new DancePractice(kid ? { beat: chart.beat, offset: app.song.offset || 0, steps: ['UP', 'T', 'DN', 'CLAP'], cfg: { holdSec: 0.4, giveUpSec: 14, clapN: 4 } } : { beat: chart.beat, offset: app.song.offset || 0 }) : null;
+  app.kidSaid = -1;
   app.skipPractice = false; app.dpd.reset();
   app.music.load(app.song); app.claps = []; app.lastJudge = null; app.rated = false; app.slotD = {};
   ui.dance = danceUi(); ui.hud = null; ui.tiles = null; ui.fruit = null; ui.dino = null;
@@ -1204,12 +1208,21 @@ function danceFrame(now, dt) {
   const claps = app.claps.map(pms => app.music.timeAtPerf(pms)); if (app.claps.length) app.clapFx = now / 1000;
   app.claps = [];
   g.update(t, app.curPose, claps);
+  const kid = !!g.chart.kid, u = g.turn;
+  if (kid && u && u.kind !== 'break' && !u._bop && t >= u.finishAt - 0.03 && u.idx >= u.n) { u._bop = true; sfx.bop(); } // "bốp": vỗ tay theo tiếng này
   for (const ev of g.drain()) {
+    if (kid && ev.kind === 'turn') { // bé chưa đọc được chữ → đọc to động tác
+      const tu = ev.turn;
+      if (tu.kind === 'break') say('Nghỉ một chút, nhún nhún theo nhạc nào!');
+      else say(tu.kind === 'finish' ? 'Động tác cuối! ' + KID_POSES.UP.say : tu.seq.map(p => KID_POSES[p].say).join(' Rồi '));
+    }
+    if (kid && ev.kind === 'step' && ev.complete) say('Vỗ tay khi nghe tiếng bốp nhé!', { urgent: false });
+    if (kid && ev.kind === 'judge') say(KID_GRADE[ev.grade].replace('!', ''), { urgent: true, rate: 1.1 });
     if (ev.kind === 'step') sfx.ok();
     else if (ev.kind === 'judge') {
       app.lastJudge = { grade: ev.grade, at: now / 1000, chain: ev.chain, incomplete: ev.incomplete };
       if (ev.grade === 'PERFECT') { sfx.star(); renderer.burst(renderer.W / 2, renderer.H * 0.35, '#ffd84a', 30); }
-      else if (ev.grade === 'GREAT' || ev.grade === 'COOL') sfx.coin(); else sfx.hit?.();
+      else if (ev.grade === 'GREAT' || ev.grade === 'COOL') { sfx.coin(); if (kid) renderer.burst(renderer.W / 2, renderer.H * 0.35, '#7dffb0', 18); } else if (!kid) sfx.hit?.();
       if (ev.finish && ev.grade !== 'MISS') { big('✨ FINISH! ✨'); renderer.burst(renderer.W / 2, renderer.H * 0.5, '#ff7eb6', 60); }
     } else if (ev.kind === 'fever') { big('FEVER! 🔥'); sfx.star(); }
     else if (ev.kind === 'turn' && ev.turn.kind === 'break') sfx.cue_hands?.();
@@ -1227,27 +1240,36 @@ const PRACTICE_TIP = {
   DN: ['NGỒI xuống (khuỵu gối)', 'Hạ người xuống rõ ràng ~1 gang tay rồi giữ; đứng lên khi có dấu ✓'],
   CLAP: ['VỖ TAY theo nhạc mỗi khi hạt chạm chấm vàng', 'Vỗ trước ngực, 2 bàn tay chạm hẳn vào nhau'],
 };
+const KID_TIP = {
+  UP: ['🌳 Giơ hai tay lên thật cao như cái cây!', 'Bố mẹ làm mẫu cùng bé nhé — 1 tay hay 2 tay đều được'],
+  T: ['✈️ Dang hai tay ra như máy bay!', 'Dang 1 tay hay 2 tay đều được, tay ngang vai'],
+  DN: ['🐸 Ngồi xuống như chú ếch!', 'Khuỵu gối hạ người xuống rồi giữ một chút'],
+  CLAP: ['👏 Vỗ tay khi nghe tiếng "bốp"!', 'Vỗ tay trước ngực'],
+};
 function practiceFrame(now, dt) {
-  const pr = app.practice, g = app.dance;
+  const pr = app.practice, g = app.dance, kid = !!g.chart.kid;
+  if (kid && app.kidSaid !== pr.i && !pr.done) { app.kidSaid = pr.i; say((KID_TIP[pr.step] || KID_TIP.CLAP)[0].replace(/^\S+ /, '')); }
+  if (kid && pr.step === 'CLAP' && !pr.done) { const T = pr.clapTargets(), mt0 = app.music.time(); for (const x of T) if (!pr['b' + x] && mt0 >= x - 0.03) { pr['b' + x] = 1; sfx.bop(); } }
   app.curPose = dancePose(now);
   if (pr.step === 'CLAP' && !app.music.playing && !pr.done) app.music.play(0);
   const mt = app.music.time();
   const claps = app.claps.map(pms => app.music.timeAtPerf(pms)); if (app.claps.length) app.clapFx = now / 1000;
   app.claps = [];
-  pr.update(now / 1000, app.curPose, claps, mt);
+  pr.update(now / 1000, kid && app.curPose && pr.step !== 'CLAP' && KID_POSES[pr.step] && ({ UP: ['UL', 'UR'], T: ['L', 'R'] }[pr.step] || []).includes(app.curPose) ? pr.step : app.curPose, claps, mt);
   for (const ev of pr.drain()) {
     if (ev.kind === 'step') { if (ev.ok) { sfx.star(); renderer.burst(renderer.W / 2, renderer.H * 0.4, '#7dffb0', 24); } else sfx.tick(); }
     else if (ev.kind === 'clap') { sfx.ok(); app.lastPracClap = { d: ev.delta, at: now / 1000 }; }
     else if (ev.kind === 'done') {
       app.music.stop();
-      if (ev.lag != null && app.input === 'camera') settings.danceClapLag = Math.round(Math.max(-150, Math.min(450, ev.lag * 1000)));
+      if (ev.lag != null && app.input === 'camera' && !kid) settings.danceClapLag = Math.round(Math.max(-150, Math.min(450, ev.lag * 1000)));
       settings.dancePracticeDone = true; saveSettings(); if ($('dance-practice')) $('dance-practice').checked = false;
       const lagTxt = ev.lag == null ? 'chưa đo được độ trễ vỗ tay (vỗ chưa đủ 4 lần) — dùng giá trị cũ' : `độ trễ vỗ tay ${Math.round(ev.lag * 1000)} ms → đã bù khi chấm`;
-      app.pracDone = { at: now, text: `Xong! Làm được ${ev.ok}/7 bước · ${lagTxt}` };
+      app.pracDone = { at: now, text: kid ? '🎉 Bé tập xong rồi! Giờ nhảy cùng công chúa nhé!' : `Xong! Làm được ${ev.ok}/7 bước · ${lagTxt}` };
+      if (kid) say('Bé tập xong rồi! Giờ mình nhảy cùng các công chúa nhé!');
       big('🎉 XONG PHẦN TẬP!');
     }
   }
-  const tip = PRACTICE_TIP[pr.step] || PRACTICE_TIP.CLAP;
+  const tip = (kid ? KID_TIP : PRACTICE_TIP)[pr.step] || PRACTICE_TIP.CLAP;
   renderer.danceScene(dt, now / 1000, g, { ...danceView(now), practice: { pr, tip, mt, seen: app.curPose, dbg: app.input === 'camera' ? app.dpd.dbg : null, lastClap: app.lastPracClap, done: app.pracDone } });
   if (app.pracDone && now - app.pracDone.at > 3200) { // vào bài nhảy thật
     app.pracDone = null; app.practice = null; app.skipPractice = true;
@@ -1258,8 +1280,10 @@ function danceOver() {
   const g = app.dance;
   app.music.stop(); setMode('over'); releaseWakeLock(); sfx.over();
   const key = 'bestDance:' + app.song.id; let best = store.get(key, 0); const record = g.score > best && g.score > 0; best = Math.max(best, g.score); store.set(key, best);
-  const C = g.counts, title = `Hạng ${g.rank} · ${g.score} điểm`;
-  const detail = `PERFECT ${C.PERFECT} · GREAT ${C.GREAT} · COOL ${C.COOL} · BAD ${C.BAD} · MISS ${C.MISS} · combo ${g.maxCombo}`;
+  const C = g.counts, kid = !!g.chart.kid;
+  const title = kid ? `${'⭐'.repeat(g.stars)} Bé nhảy giỏi quá!` : `Hạng ${g.rank} · ${g.score} điểm`;
+  const detail = kid ? `Làm được ${C.PERFECT + C.GREAT + C.COOL} động tác · vỗ tay đúng nhịp ${C.PERFECT} lần` : `PERFECT ${C.PERFECT} · GREAT ${C.GREAT} · COOL ${C.COOL} · BAD ${C.BAD} · MISS ${C.MISS} · combo ${g.maxCombo}`;
+  if (kid) say(g.stars >= 3 ? 'Ba ngôi sao! Bé nhảy giỏi quá!' : g.stars === 2 ? 'Hai ngôi sao! Giỏi lắm!' : 'Một ngôi sao! Lần sau mình nhảy tiếp nhé!');
   $('over-score').textContent = g.score; $('over-detail').textContent = `${app.song.name} — ${detail}`; $('over-best').textContent = record ? '🏆 Kỷ lục mới cho bài này!' : `Kỷ lục bài này: ${best}`;
   $('over-hands').textContent = app.input === 'camera' ? 'hoặc giơ 2 tay 1.5 giây để nhảy lại' : '';
   ui.panel = { title, color: '#ff7eb6', lines: [detail, record ? '🏆 Kỷ lục mới!' : `Kỷ lục bài này: ${best}`, app.input === 'camera' ? '🙌 Giơ 2 tay 1.5 giây để nhảy lại' : 'Enter / bấm Chơi lại'] };

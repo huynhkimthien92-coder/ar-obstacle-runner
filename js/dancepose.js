@@ -66,6 +66,7 @@ export function combine(L, R) {
   if (R === 'up' && L === 'down') return 'UR';
   if (L === 'out' && R === 'down') return 'L';
   if (R === 'out' && L === 'down') return 'R';
+  if (L === 'out' && R === 'out') return 'T';
   if (L === 'down' && R === 'down') return 'REST';
   return null;
 }

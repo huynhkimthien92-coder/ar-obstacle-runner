@@ -96,3 +96,8 @@ test('tay buông 2 bên hông không bị tính là vỗ tay', () => {
   for (let i = 0; i < 20; i++) if (d.clap(body({ l: 5, r: 5 }), i * 33) != null) n++;
   assert.equal(n, 0);
 });
+
+test('dang cả 2 tay = T (máy bay)', () => {
+  const d = new DancePoseDetector();
+  assert.equal(run(d, body({ l: 90, r: 95 })), 'T');
+});

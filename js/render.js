@@ -7,7 +7,7 @@ import { TileGeom } from './tiles.js';
 import { drawDino, drawDinoBg, dinoPose, drawWaterFront, drawProjectile } from './dinodraw.js';
 import { dinoBox, RESP } from './dino.js';
 import { drawPrincess, drawBallroom, drawPoseIcon, PRINCESSES, ARM_POSES } from './princess.js';
-import { POSES } from './dance.js';
+import { POSES, KID_POSES, KID_GRADE } from './dance.js';
 const hexA = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
 const clamp01 = x => Math.max(0, Math.min(1, x));
 
@@ -527,7 +527,7 @@ export class Renderer {
       if (u0.kind === 'break') { const k = Math.floor(b); const seqB = ['L', 'R', 'UL', 'UR', 'UP', 'WAVE', 'CLAP', 'UP']; return { pose: seqB[((k % 8) + 8) % 8], twirl: k % 4 === 3 ? (b % 1) : 0, mood: 'happy' }; }
       const demoBeats = 4, n = u0.n;
       if (b < demoBeats) { const k = Math.floor(b * Math.max(n, 4) / demoBeats) - (n < 4 ? 0 : 0); const kk = n <= 4 ? Math.floor(b) : Math.floor(b * n / demoBeats); void k; return { pose: kk < n ? u0.seq[kk] : 'rest', twirl: 0, mood: 'happy' }; }
-      if (u0.judged) { const g = u0.grade; return { pose: g === 'MISS' || g === 'BAD' ? 'rest' : 'UP', twirl: g === 'PERFECT' || g === 'GREAT' ? Math.min(1, (t - (u0.finishAt)) / (beat * 0.9)) : 0, mood: g === 'MISS' || g === 'BAD' ? 'sad' : 'wow' }; }
+      if (u0.judged) { const g = u0.grade; if (dg.chart.kid) return { pose: 'UP', twirl: g === 'MISS' ? 0 : Math.min(1, (t - u0.finishAt) / (beat * 0.9)), mood: 'happy' }; return { pose: g === 'MISS' || g === 'BAD' ? 'rest' : 'UP', twirl: g === 'PERFECT' || g === 'GREAT' ? Math.min(1, (t - (u0.finishAt)) / (beat * 0.9)) : 0, mood: g === 'MISS' || g === 'BAD' ? 'sad' : 'wow' }; }
       if (b >= u0.beats - 1.35) return { pose: 'CLAP', twirl: 0, mood: 'wow' };
       if (u0.idx > 0) return { pose: u0.seq[u0.idx - 1], twirl: 0, mood: 'happy' };          // nhảy theo bước bạn vừa làm
       return { pose: Math.floor(b) % 2 ? 'WAVE' : 'rest', twirl: 0, mood: 'happy' };
@@ -571,7 +571,11 @@ export class Renderer {
     if (PR) this._practicePanel(PR, py, pH, tSec);
     else if (u0 && u0.kind !== 'break' && bi >= 0) {
       const n = u0.n, r = Math.min(30 * u, (W * 0.7) / Math.max(1, n) / 2.4), gap = r * 2.5, x0 = W / 2 - (n - 1) * gap / 2, iy = py + pH * 0.33;
-      for (let i = 0; i < n; i++) drawPoseIcon(ctx, x0 + i * gap, iy, r, POSES[u0.seq[i]], u0.done[i] ? 'done' : i === u0.idx ? 'now' : 'todo', tSec);
+      const KID = !!dg.chart.kid;
+      for (let i = 0; i < n; i++) {
+        if (KID) this._kidIcon(x0 + i * gap, iy, r, u0.seq[i], u0.done[i] ? 'done' : i === u0.idx ? 'now' : 'todo', tSec);
+        else drawPoseIcon(ctx, x0 + i * gap, iy, r, POSES[u0.seq[i]], u0.done[i] ? 'done' : i === u0.idx ? 'now' : 'todo', tSec);
+      }
       // thanh hạt nhịp: hạt chạy qua các phách; vạch vỗ tay ở phách cuối
       const bw = W * 0.62, bx = W / 2 - bw / 2, by = py + pH * 0.76;
       ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(bx, by - 3 * u, bw, 6 * u);
@@ -581,13 +585,13 @@ export class Renderer {
       const gB = ctx.createRadialGradient(hx, by, 0, hx, by, 18 * u); gB.addColorStop(0, '#fff'); gB.addColorStop(1, ready ? '#ffd84a' : '#ff7eb6');
       ctx.fillStyle = gB; ctx.beginPath(); ctx.arc(hx, by, 11 * u, 0, Math.PI * 2); ctx.fill();
       { // lời nhắc: đặt phía trên bảng, giữa màn hình (không bị cắt)
-        const msg = ready ? '👏 VỖ TAY khi hạt chạy tới vạch vàng!' : `Làm lần lượt ${n} động tác theo thứ tự`;
+        const msg = KID ? (ready ? '👏 Vỗ tay khi nghe tiếng "bốp"!' : `Làm theo các công chúa: ${u0.seq.map(p => KID_POSES[p].emoji + ' ' + KID_POSES[p].label).join(' → ')}`) : ready ? '👏 VỖ TAY khi hạt chạy tới vạch vàng!' : `Làm lần lượt ${n} động tác theo thứ tự`;
         ctx.font = `800 ${Math.round(22 * u)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         const mw = ctx.measureText(msg).width + 28 * u;
         ctx.fillStyle = ready ? 'rgba(80,50,0,0.75)' : 'rgba(12,6,28,0.7)'; ctx.fillRect(W / 2 - mw / 2, py - 40 * u, mw, 34 * u);
         ctx.fillStyle = ready ? '#ffd84a' : '#f2e8ff'; ctx.fillText(msg, W / 2, py - 23 * u);
       }
-      ctx.textAlign = 'left'; ctx.fillStyle = '#d6c8ff'; ctx.fillText(u0.kind === 'finish' ? '✨ FINISH MOVE ×3' : `Lv ${u0.lvl}`, bx + bw + 20 * u, by);
+      ctx.textAlign = 'left'; ctx.fillStyle = '#d6c8ff'; ctx.fillText(KID ? (u0.kind === 'finish' ? '🎆 Cuối rồi!' : '') : u0.kind === 'finish' ? '✨ FINISH MOVE ×3' : `Lv ${u0.lvl}`, bx + bw + 20 * u, by);
     } else if (u0?.kind === 'break') {
       ctx.font = `800 ${Math.round(26 * u)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#ffc2dc';
       ctx.fillText('✨ Các nàng công chúa solo — nghỉ chút, nhún theo nhạc nhé!', W / 2, py + pH / 2);
@@ -600,36 +604,52 @@ export class Renderer {
     if (J && tSec - J.at < 1.1) {
       const k = (tSec - J.at) / 1.1, sc = k < 0.12 ? 0.6 + 3.3 * k : 1 - 0.1 * k;
       ctx.save(); ctx.globalAlpha = k > 0.75 ? (1 - k) / 0.25 : 1; ctx.translate(W / 2, H * 0.3); ctx.scale(sc, sc);
-      const fs = Math.round(96 * u); ctx.font = `900 italic ${fs}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      let fill = { GREAT: '#7dffb0', COOL: '#6fc8ff', BAD: '#ffb347', MISS: '#9aa4b8' }[J.grade];
+      const KJ = !!dg.chart.kid, label = KJ ? KID_GRADE[J.grade] : J.grade;
+      const fs = Math.round((KJ ? 80 : 96) * u); ctx.font = `900 italic ${fs}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      let fill = { GREAT: '#7dffb0', COOL: '#6fc8ff', BAD: '#ffb347', MISS: KJ ? '#ffb3d9' : '#9aa4b8' }[J.grade];
       if (J.grade === 'PERFECT') { const g = ctx.createLinearGradient(-fs * 2.5, 0, fs * 2.5, 0); ['#ff5ea8', '#ffd84a', '#7dffb0', '#6fc8ff', '#c77dff'].forEach((col, i) => g.addColorStop(((i / 4) + tSec * 0.8) % 1, col)); fill = g; }
-      ctx.lineWidth = 10 * u; ctx.strokeStyle = 'rgba(30,10,50,0.85)'; ctx.strokeText(J.grade, 0, 0); ctx.fillStyle = fill; ctx.fillText(J.grade, 0, 0);
-      if (J.chain > 1 && J.grade === 'PERFECT') { ctx.font = `900 ${Math.round(44 * u)}px system-ui, sans-serif`; ctx.strokeText(`x${J.chain}`, fs * 2.1, fs * 0.1); ctx.fillStyle = '#ffd84a'; ctx.fillText(`x${J.chain}`, fs * 2.1, fs * 0.1); }
-      if (J.incomplete) { ctx.font = `800 ${Math.round(24 * u)}px system-ui, sans-serif`; ctx.fillStyle = '#ffb347'; ctx.fillText('Chưa làm đủ động tác!', 0, fs * 0.75); }
+      ctx.lineWidth = 10 * u; ctx.strokeStyle = 'rgba(30,10,50,0.85)'; ctx.strokeText(label, 0, 0); ctx.fillStyle = fill; ctx.fillText(label, 0, 0);
+      if (!KJ && J.chain > 1 && J.grade === 'PERFECT') { ctx.font = `900 ${Math.round(44 * u)}px system-ui, sans-serif`; ctx.strokeText(`x${J.chain}`, fs * 2.1, fs * 0.1); ctx.fillStyle = '#ffd84a'; ctx.fillText(`x${J.chain}`, fs * 2.1, fs * 0.1); }
+      if (J.incomplete && !KJ) { ctx.font = `800 ${Math.round(24 * u)}px system-ui, sans-serif`; ctx.fillStyle = '#ffb347'; ctx.fillText('Chưa làm đủ động tác!', 0, fs * 0.75); }
       ctx.restore();
     }
     this.effects(dt);
   }
 
+  /** Ô động tác cho bé: hình to (🌳 ✈️ 🐸) + chữ cho bố mẹ đọc. */
+  _kidIcon(x, y, r, P, state, tSec, small = false) {
+    const ctx = this.ctx, u = this.u, K = KID_POSES[P] || { emoji: '?', label: '' }, rr = small ? r : r * 1.25;
+    const pulse = state === 'now' ? 1 + 0.08 * Math.sin(tSec * 8) : 1;
+    ctx.save(); ctx.translate(x, y); ctx.scale(pulse, pulse);
+    ctx.fillStyle = state === 'done' ? '#7dffb0' : state === 'now' ? '#fff3b0' : 'rgba(255,255,255,0.28)';
+    ctx.beginPath(); ctx.arc(0, 0, rr, 0, Math.PI * 2); ctx.fill();
+    if (state === 'now') { ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 4 * u; ctx.stroke(); }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `${Math.round(rr * 1.15)}px system-ui, sans-serif`; ctx.fillStyle = '#000';
+    ctx.fillText(K.emoji, 0, rr * 0.06);
+    if (state === 'done') { ctx.font = `900 ${Math.round(rr * 0.6)}px system-ui, sans-serif`; ctx.fillStyle = '#0a7a3a'; ctx.fillText('✓', rr * 0.75, -rr * 0.7); }
+    ctx.restore();
+  }
+
   /** Bảng dưới của màn TẬP: 7 bước, động tác đang tập + vòng giữ, gợi ý, game đang thấy gì; bước vỗ tay có thanh phách. */
   _practicePanel(PR, py, pH, tSec) {
-    const { ctx, W, H } = this, u = this.u, pr = PR.pr, steps = ['L', 'R', 'UL', 'UR', 'UP', 'DN', 'CLAP'];
+    const { ctx, W, H } = this, u = this.u, pr = PR.pr, steps = pr.steps, NS = steps.length, KIDP = NS < 7;
     const font = (w, px) => `${w} ${Math.round(px * u)}px system-ui, sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     // tiêu đề + hướng dẫn chính (trên bảng)
-    const title = PR.done ? PR.done.text : `🎓 Bước ${Math.min(7, pr.i + 1)}/7 — ${PR.tip[0]}`;
+    const title = PR.done ? PR.done.text : (KIDP ? `Bước ${Math.min(NS, pr.i + 1)}/${NS} — ${PR.tip[0]}` : `🎓 Bước ${Math.min(NS, pr.i + 1)}/${NS} — ${PR.tip[0]}`);
     ctx.font = font(800, 26); const mw = Math.min(W - 20 * u, ctx.measureText(title).width + 32 * u);
     ctx.fillStyle = 'rgba(12,6,28,0.78)'; ctx.fillRect(W / 2 - mw / 2, H * 0.16, mw, 44 * u);
     ctx.fillStyle = PR.done ? '#7dffb0' : '#fff'; ctx.fillText(title, W / 2, H * 0.16 + 22 * u, W - 30 * u);
     if (!PR.done && (pr.hint || pr.step === 'CLAP')) { ctx.font = font(700, 19); const hm = '💡 ' + PR.tip[1], hw = Math.min(W - 20 * u, ctx.measureText(hm).width + 26 * u); ctx.fillStyle = 'rgba(60,36,0,0.8)'; ctx.fillRect(W / 2 - hw / 2, H * 0.16 + 48 * u, hw, 30 * u); ctx.fillStyle = '#ffd84a'; ctx.fillText(hm, W / 2, H * 0.16 + 63 * u, W - 30 * u); }
     // 7 bước
     const r = 17 * u, gap = r * 2.7;
-    for (let k = 0; k < 7; k++) {
-      const x = W / 2 - 3 * gap + k * gap, y = py + pH * 0.3, st = steps[k];
+    for (let k = 0; k < NS; k++) {
+      const x = W / 2 - (NS - 1) / 2 * gap + k * gap, y = py + pH * 0.3, st = steps[k];
       const state = pr.res[k] === true ? 'done' : k === pr.i && !PR.done ? 'now' : 'todo';
       if (st === 'CLAP') { ctx.fillStyle = state === 'done' ? '#7dffb0' : state === 'now' ? '#ffd84a' : 'rgba(255,255,255,0.25)'; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.font = font(700, 18); ctx.fillStyle = '#000'; ctx.fillText('👏', x, y + 1); }
+      else if (KIDP) this._kidIcon(x, y, r, st, state, tSec, true);
       else drawPoseIcon(ctx, x, y, r, POSES[st], state, tSec);
-      if (pr.res[k] === false) { ctx.font = font(900, 16); ctx.fillStyle = '#ff6b6b'; ctx.fillText('✗', x + r, y - r); }
+      if (pr.res[k] === false && !KIDP) { ctx.font = font(900, 16); ctx.fillStyle = '#ff6b6b'; ctx.fillText('✗', x + r, y - r); }
       if (k === pr.i && st !== 'CLAP' && pr.progress > 0) { ctx.strokeStyle = '#7dffb0'; ctx.lineWidth = 5 * u; ctx.beginPath(); ctx.arc(x, y, r + 6 * u, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pr.progress); ctx.stroke(); }
     }
     // dòng dưới: game đang thấy gì / thanh phách vỗ tay
