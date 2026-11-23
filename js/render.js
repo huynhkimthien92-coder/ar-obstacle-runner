@@ -86,6 +86,7 @@ export class Renderer {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     if (!this.opaque) return;
     if (this.look === 'game') { this.bgGame(); return; }
+    if (this.look === 'fruit') { this.bgFruit(); return; }
     // Canvas tự vẽ nền (hình camera hoặc nền tối) thay vì để thẻ <video> bên dưới lộ ra: không phụ thuộc trình duyệt
     // ghép lớp (lỗi trên Android), và khi phát sang TV qua Wi-Fi thì TV nhận đúng canvas này.
     const v = this.video;
@@ -122,6 +123,142 @@ export class Renderer {
     const ground = ctx.createLinearGradient(0, hz, 0, H);
     ground.addColorStop(0, '#24184f'); ground.addColorStop(1, '#0c0a22');
     ctx.fillStyle = ground; ctx.fillRect(0, hz, W, H - hz);
+  }
+
+  /** Nền game Chém trái cây: bầu trời CAO (chiếm ~85% màn hình) để trái rơi từ xa, núi thấp, mặt đất mỏng ở đáy. */
+  bgFruit() {
+    const { ctx, W, H } = this, hz = H * 0.86;
+    const sky = ctx.createLinearGradient(0, 0, 0, hz);
+    sky.addColorStop(0, '#060a24'); sky.addColorStop(0.6, '#1d1a5a'); sky.addColorStop(1, '#6b3c8c');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, hz + 1);
+    if (!this.stars) this.stars = Array.from({ length: 70 }, (_, i) => ({ x: (i * 7919 % 1000) / 1000, y: (i * 104729 % 1000) / 1000 * 0.7, r: 0.6 + (i % 3) * 0.5 }));
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    for (const st of this.stars) { ctx.globalAlpha = 0.4 + 0.4 * Math.sin(this.scroll * 0.8 + st.x * 40); ctx.beginPath(); ctx.arc(st.x * W, st.y * H, st.r * this.u, 0, Math.PI * 2); ctx.fill(); }
+    ctx.globalAlpha = 1;
+    const moon = ctx.createRadialGradient(W * 0.82, H * 0.16, 0, W * 0.82, H * 0.16, H * 0.14);
+    moon.addColorStop(0, 'rgba(255,250,220,1)'); moon.addColorStop(0.45, 'rgba(255,240,200,0.95)'); moon.addColorStop(0.5, 'rgba(255,230,180,0.25)'); moon.addColorStop(1, 'rgba(255,220,160,0)');
+    ctx.fillStyle = moon; ctx.fillRect(W * 0.6, 0, W * 0.4, H * 0.35);
+    ctx.fillStyle = '#2a1d55'; ctx.beginPath(); ctx.moveTo(0, hz);
+    for (let x = 0; x <= W; x += W / 40) { const t = x / W * 7; ctx.lineTo(x, hz - H * (0.04 + 0.03 * Math.sin(t) + 0.015 * Math.sin(t * 2.7 + 1))); }
+    ctx.lineTo(W, hz); ctx.closePath(); ctx.fill();
+    const gnd = ctx.createLinearGradient(0, hz, 0, H); gnd.addColorStop(0, '#1a1240'); gnd.addColorStop(1, '#0a0820');
+    ctx.fillStyle = gnd; ctx.fillRect(0, hz, W, H - hz);
+    for (const st of this.stains || []) { ctx.globalAlpha = Math.max(0, st.life) * 0.5; ctx.fillStyle = st.color; ctx.beginPath(); ctx.arc(st.x, st.y, st.r, 0, Math.PI * 2); ctx.fill(); }
+    ctx.globalAlpha = 1;
+  }
+
+  /** Vẽ 1 trái (hoặc bom / khế vàng) tại toạ độ gốc đã dời; cut=true: vẽ mặt cắt ruột. */
+  fruitShape(type, r, tSec, cut = false) {
+    const { ctx } = this;
+    const circle = (x, y, rr, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2); ctx.fill(); };
+    const shade = (c1, c2, rx = r, ry = r) => { const g = ctx.createRadialGradient(-rx * 0.35, -ry * 0.4, rx * 0.1, 0, 0, Math.max(rx, ry)); g.addColorStop(0, c1); g.addColorStop(1, c2); ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2); ctx.fill(); };
+    switch (type) {
+      case 'watermelon':
+        shade('#5fd36b', '#1c6b2a', r, r * 0.82);
+        ctx.strokeStyle = '#124d1c'; ctx.lineWidth = r * 0.09;
+        for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.ellipse(i * r * 0.32, 0, r * 0.12, r * 0.78, 0, 0, Math.PI * 2); ctx.stroke(); }
+        if (cut) { ctx.fillStyle = '#ff4d5e'; ctx.beginPath(); ctx.ellipse(0, 0, r * 0.9, r * 0.22, 0, 0, Math.PI * 2); ctx.fill(); for (let i = -3; i <= 3; i++) circle(i * r * 0.22, (i % 2) * r * 0.06, r * 0.035, '#111'); }
+        break;
+      case 'orange':
+        shade('#ffd27a', '#e86a00');
+        ctx.fillStyle = 'rgba(160,70,0,0.35)'; for (let i = 0; i < 9; i++) circle(Math.cos(i * 2.4) * r * 0.55, Math.sin(i * 2.4) * r * 0.5, r * 0.05, ctx.fillStyle);
+        circle(0, -r * 0.92, r * 0.1, '#3a8f2a');
+        if (cut) { ctx.fillStyle = '#ffc067'; ctx.beginPath(); ctx.ellipse(0, 0, r * 0.88, r * 0.24, 0, 0, Math.PI * 2); ctx.fill(); }
+        break;
+      case 'apple':
+        shade('#ff7b86', '#a3121f');
+        circle(0, -r * 0.88, r * 0.22, '#7a0d16');
+        ctx.strokeStyle = '#5b3a1a'; ctx.lineWidth = r * 0.1; ctx.beginPath(); ctx.moveTo(0, -r * 0.85); ctx.lineTo(r * 0.1, -r * 1.2); ctx.stroke();
+        ctx.fillStyle = '#3fae3a'; ctx.beginPath(); ctx.ellipse(r * 0.3, -r * 1.12, r * 0.22, r * 0.1, -0.5, 0, Math.PI * 2); ctx.fill();
+        if (cut) { ctx.fillStyle = '#fff1c1'; ctx.beginPath(); ctx.ellipse(0, 0, r * 0.88, r * 0.24, 0, 0, Math.PI * 2); ctx.fill(); circle(0, 0, r * 0.08, '#6b4a2a'); }
+        break;
+      case 'mango':
+        shade('#ffe066', '#f05a28', r * 1.15, r * 0.8);
+        if (cut) { ctx.fillStyle = '#ffb703'; ctx.beginPath(); ctx.ellipse(0, 0, r * 1.05, r * 0.22, 0, 0, Math.PI * 2); ctx.fill(); }
+        break;
+      case 'dragon':
+        shade('#ff7ac2', '#c2185b', r, r * 1.05);
+        ctx.fillStyle = '#5fd36b';
+        for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + 0.3; ctx.beginPath(); ctx.moveTo(Math.cos(a) * r * 0.7, Math.sin(a) * r * 0.7); ctx.lineTo(Math.cos(a + 0.18) * r * 1.22, Math.sin(a + 0.18) * r * 1.22); ctx.lineTo(Math.cos(a + 0.36) * r * 0.75, Math.sin(a + 0.36) * r * 0.75); ctx.fill(); }
+        if (cut) { ctx.fillStyle = '#fafafa'; ctx.beginPath(); ctx.ellipse(0, 0, r * 0.85, r * 0.24, 0, 0, Math.PI * 2); ctx.fill(); for (let i = 0; i < 12; i++) circle((i / 11 - 0.5) * r * 1.5, ((i * 7) % 3 - 1) * r * 0.06, r * 0.025, '#111'); }
+        break;
+      case 'bomb': {
+        const pulse = 0.5 + 0.5 * Math.sin(tSec * 12);
+        ctx.strokeStyle = `rgba(255,40,40,${0.35 + 0.4 * pulse})`; ctx.lineWidth = r * 0.18; ctx.beginPath(); ctx.arc(0, 0, r * 1.25, 0, Math.PI * 2); ctx.stroke();
+        shade('#666', '#0b0b0b');
+        ctx.strokeStyle = '#c9a26b'; ctx.lineWidth = r * 0.12; ctx.beginPath(); ctx.moveTo(0, -r); ctx.quadraticCurveTo(r * 0.4, -r * 1.4, r * 0.15, -r * 1.6); ctx.stroke();
+        circle(r * 0.15, -r * 1.6, r * (0.14 + 0.08 * pulse), '#ffd23f');
+        ctx.fillStyle = '#fff'; ctx.font = `900 ${Math.round(r * 0.9)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('✖', 0, r * 0.05);
+        break;
+      }
+      case 'gold': { // khế vàng: sao 5 cánh phát sáng
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 1.8); g.addColorStop(0, 'rgba(255,240,120,0.6)'); g.addColorStop(1, 'rgba(255,200,0,0)');
+        ctx.fillStyle = g; ctx.fillRect(-r * 1.8, -r * 1.8, r * 3.6, r * 3.6);
+        ctx.fillStyle = '#ffd23f'; ctx.strokeStyle = '#c98a00'; ctx.lineWidth = r * 0.08; ctx.beginPath();
+        for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.5 : r * 1.05; ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        break;
+      }
+    }
+  }
+
+  /** Hiệu ứng khi chém: 2 nửa trái bay tách ra theo hướng vuông góc nhát chém + nước bắn + vết nước trên nền. */
+  sliceFx(o, angle) {
+    const JUICE = { watermelon: '#ff4d5e', orange: '#ffa630', apple: '#fff1c1', mango: '#ffb703', dragon: '#ff5fb0', gold: '#ffe066' };
+    const nx = -Math.sin(angle), ny = Math.cos(angle), sp = this.H * 0.25;
+    this.halves = this.halves || [];
+    for (const side of [-1, 1]) this.halves.push({ type: o.type, r: o.r, x: o.x + nx * side * o.r * 0.15, y: o.y + ny * side * o.r * 0.15, rot: angle, side, vx: o.vx + nx * side * sp, vy: o.vy * 0.3 + ny * side * sp - this.H * 0.1, vr: side * 3, life: 1.3 });
+    if (this.halves.length > 30) this.halves.splice(0, this.halves.length - 30);
+    this.burst(o.x, o.y, JUICE[o.type] || '#fff', 18);
+    this.stains = (this.stains || []).concat({ x: o.x, y: o.y, r: o.r * 1.3, color: JUICE[o.type] || '#fff', life: 1 }).slice(-14);
+  }
+
+  /** Cảnh Chém trái cây: nền trời cao, trái rơi, nửa trái, người nhỏ ở đáy, lưỡi chém 2 tay. */
+  fruitScene(dt, tSec, fg, view) {
+    const { ctx, H } = this, u = this.u;
+    this.scroll = tSec;
+    this.clear();
+    for (const st of this.stains || []) st.life -= dt * 0.4;
+    if (this.stains) this.stains = this.stains.filter(st => st.life > 0);
+    // người (nhỏ, đứng ở đáy) vẽ trước để trái rơi ngang qua phía trước
+    if (view.person?.it) this.drawPersonAt(view.person.it, view.person.anchorF, view.person.anchorD, view.person.s, this.mirror);
+    else if (view.skel) this.skeleton(view.skel, null, null, tSec, 0.9);
+    // dây nối mờ từ cổ tay thật (nhỏ) tới lưỡi chém → dễ hiểu tay mình đang điều khiển lưỡi nào
+    for (const h of view.hands || []) if (h.from) {
+      ctx.setLineDash([6 * u, 8 * u]); ctx.strokeStyle = h.color; ctx.globalAlpha = 0.35; ctx.lineWidth = 2 * u;
+      ctx.beginPath(); ctx.moveTo(h.from.x, h.from.y); ctx.lineTo(h.x, h.y); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
+    for (const o of fg.objs) { ctx.save(); ctx.translate(o.x, o.y); ctx.rotate(o.rot); this.fruitShape(o.type, o.r, tSec); ctx.restore(); }
+    for (const hf of this.halves || []) {
+      hf.life -= dt; hf.vy += H * 0.9 * dt; hf.x += hf.vx * dt; hf.y += hf.vy * dt; hf.rot += hf.vr * dt;
+      ctx.save(); ctx.globalAlpha = Math.max(0, Math.min(1, hf.life * 1.5)); ctx.translate(hf.x, hf.y); ctx.rotate(hf.rot);
+      ctx.beginPath(); ctx.rect(-hf.r * 1.5, hf.side > 0 ? 0 : -hf.r * 1.5, hf.r * 3, hf.r * 1.5); ctx.clip();
+      this.fruitShape(hf.type, hf.r, tSec, true); ctx.restore();
+    }
+    if (this.halves) this.halves = this.halves.filter(hf => hf.life > 0 && hf.y < H + hf.r * 2);
+    // lưỡi chém: vệt sáng thon dần theo đường tay vừa đi qua
+    for (const h of view.hands || []) {
+      const tr = h.trail || [];
+      for (let i = 1; i < tr.length; i++) {
+        const k = i / tr.length;
+        ctx.strokeStyle = h.color; ctx.globalAlpha = 0.25 * k; ctx.lineWidth = (6 + 22 * k) * u; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(tr[i - 1].x, tr[i - 1].y); ctx.lineTo(tr[i].x, tr[i].y); ctx.stroke();
+        ctx.strokeStyle = '#fff'; ctx.globalAlpha = 0.9 * k; ctx.lineWidth = (1.5 + 5 * k) * u; ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = h.color; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3 * u;
+      ctx.beginPath(); ctx.arc(h.x, h.y, (h.fast ? 16 : 11) * u, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+    this.effects(dt);
+  }
+
+  /** Vẽ người đã cắt nền với điểm neo tuỳ ý: điểm (fx,fy) của khung nhận diện → đặt tại (x,y) màn hình, thu nhỏ s. */
+  drawPersonAt(it, af, ad, s, mirror) {
+    if (!it?.canvas) return;
+    const { ctx } = this;
+    ctx.save(); ctx.translate(ad.x, ad.y); if (mirror) ctx.scale(-1, 1);
+    ctx.drawImage(it.canvas, (it.bx - af.x) * s, (it.by - af.y) * s, it.canvas.width * s, it.canvas.height * s);
+    ctx.restore();
   }
 
   /** Vẽ người đã cắt nền, THU NHỎ theo hệ số s, chân đặt tại (x, y) trên đường/ô; có bóng dưới chân. */
@@ -215,6 +352,16 @@ export class Renderer {
       text(`Vòng ${T.round}`, 24 * u, 36 * u, 30, '#d6e4ff', 'left');
       T.players.forEach((p, i) => text(`P${p.n} ${p.alive ? '♥'.repeat(p.lives) : '✖ bị loại'}`, 24 * u, (80 + i * 40) * u, 28, p.alive ? p.color : '#888', 'left'));
       if (T.solo && T.best != null) text(`Kỷ lục: ${T.best} vòng`, W - 24 * u, 92 * u, 24, '#d6e4ff', 'right', 600);
+    }
+    if (ui.fruit) {
+      const F = ui.fruit, k = Math.max(0, Math.min(1, F.time / F.duration));
+      text(String(F.score), W / 2, 50 * u, 66);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(W * 0.3, 96 * u, W * 0.4, 10 * u);
+      ctx.fillStyle = F.time < 10 ? '#ff5a3c' : '#7dffb0'; ctx.fillRect(W * 0.3, 96 * u, W * 0.4 * k, 10 * u);
+      text(`${Math.ceil(F.time)} s`, W / 2, 124 * u, 24, F.time < 10 ? '#ff5a3c' : '#d6e4ff', 'center', 700);
+      text('♥'.repeat(Math.max(0, F.lives)) + '♡'.repeat(Math.max(0, F.maxLives - F.lives)), 28 * u, 46 * u, 44, '#ff4d6d', 'left');
+      text('Né bom 💣', 28 * u, 92 * u, 20, '#d6e4ff', 'left', 600);
+      if (F.best != null) text(`Kỷ lục: ${F.best}`, W - 24 * u, 92 * u, 22, '#d6e4ff', 'right', 600);
     }
     if (ui.cue) this.cue(ui.cue, tMs, u, text);
     else if (ui.hint) text(ui.hint, W / 2, H * 0.25, 54);

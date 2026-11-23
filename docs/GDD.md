@@ -59,6 +59,15 @@ Thời lượng phiên ngắn là cố ý: vận động toàn thân mệt nhanh
 - **Nhiều người:** MediaPipe nhận tối đa 4 bộ khung xương; game tự gán ID theo vị trí gần nhất giữa các khung hình. Người đã vào ván mà khuất tối đa 15 s rồi quay lại vẫn giữ đúng P1/P2. Ai có mặt lúc đếm ngược kết thúc mới được tính vào ván.
 - **Edge case:** 2 người đứng sát / che nhau → có thể bị đổi ID; không thấy ai lúc bắt đầu → chờ. Có bù độ trễ màn hình khi chốt kết quả.
 
+## 3c. Game thứ ba — "Chém trái cây" (1 người)
+- **Player fantasy:** kiếm sĩ chém trái cây giữa trời đêm — vung tay thật, thấy lưỡi chém vệt sáng và trái bổ đôi bắn nước.
+- **Bố cục:** người được tách nền, **thu nhỏ còn 30% chiều cao màn hình** đứng ở đáy; trời chiếm ~85% màn hình nên trái rơi từ rất cao, có nhiều thời gian phản ứng.
+- **Lưỡi chém = vai + hướng vươn tay × tầm màn hình** (không phải vị trí tay thật trong hình): hướng vươn tính theo chiều dài cánh tay của chính người chơi (đo liên tục, lấy lớn nhất). Tay cao hơn đầu một chút (≈60% chiều dài tay) đã chạm đỉnh; dang hết tay chạm mép. Vì vậy **không cần với cao → tay không ra khỏi khung camera → không mất dấu tay**. Cổ tay khuất thì đoán theo hướng cánh tay từ khuỷu. Có dây mờ nối cổ tay thật (nhỏ) với lưỡi chém để dễ hiểu.
+- **Chém:** đoạn đường lưỡi chém đi qua trong 1 khung cắt ngang trái (nới vùng trúng 1,2% chiều cao) **và** tay nhanh hơn 0,7 × chiều cao màn hình/giây (để tay để yên không chém bừa).
+- **Vật thể:** dưa hấu, cam, táo, xoài (1 điểm), thanh long (2 điểm), **bom** (viền đỏ nhấp nháy, chém trúng mất 1 ♥, 3 lần hết lượt), **khế vàng** (+5 giây, +5 điểm). Trái rơi chạm đáy chỉ mất, không trừ mạng (chơi bằng người thật nên chỉ phạt bom).
+- **Combo:** một tay chém ≥3 trái trong 0,3 s = 1 nhát → thưởng thêm bằng số trái.
+- **Độ khó (PH):** 75 s/lượt; nhịp rơi 1,35 s → 0,55 s; 1 → 3 trái mỗi đợt; trọng lực 0,30 → 0,62 × H/s² (lúc đầu ~2 s từ đỉnh xuống đáy); bom xuất hiện từ giây thứ 8, tỉ lệ 5% → 18%.
+
 ## 4. Bảng kinh tế điểm (tuning)
 | Biến | Gốc | Min | Max | Lý do |
 |---|---|---|---|---|
@@ -84,6 +93,7 @@ Thời lượng phiên ngắn là cố ý: vận động toàn thân mệt nhanh
 
 ## Changelog
 - v0.1 (23/11/2026): bản đầu, 5 loại chướng ngại + sao, 3 tier, tutorial 6 bước.
+- v0.7 (23/11/2026): game thứ ba **Chém trái cây** (người thu nhỏ ở đáy, trời cao, lưỡi chém theo hướng vươn tay so với vai).
 - v0.6 (23/11/2026): kiểu hiển thị **Khung cảnh game** (mặc định): tách người khỏi nền bằng mặt nạ segmentation của MediaPipe, thu nhỏ theo **Cỡ người** (mặc định 42% chiều cao màn hình), đặt chân lên đường đua / lưới ô ảo; nền phòng thay bằng khung cảnh game → đồ hoạ không còn bị môi trường làm mờ, không cần lùi xa trong phòng chật. Kiểu **Thấy phòng thật** có thanh làm tối nền. Màn chỉnh góc / hiệu chỉnh vẫn hiện phòng thật.
 - v0.5 (23/11/2026): màn **Chỉnh góc camera** (không tự vào game) với bảng kiểm tra trực tiếp, làn/mặt sàn/lưới ô xem trước, thước thăng bằng; sửa lỗi mất hình camera lúc chơi trên Chrome Android (canvas tự vẽ hình camera).
 - v0.4 (23/11/2026): (1) **nhận diện lại** khi quay vào khung: không so với tư thế cũ mà lấy lại baseline trong 0,4 s (trước đây quay lại ở chỗ khác bị báo nhảy/ngồi nhầm); bộ đếm tạm dừng dùng đồng hồ thật. (2) **Tỉ lệ người – đường đua:** mặt đường đặt đúng ở chân người chơi, 1 m tính theo chiều cao thật của người đó → rào ngang gối, laser ngang ngực, tường cao hơn đầu (trẻ em thấp thì mọi thứ thấp theo). (3) **Game mới "Ô an toàn"** 1–4 người.
