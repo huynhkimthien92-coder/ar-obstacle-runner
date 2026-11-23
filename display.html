@@ -21,6 +21,8 @@
     #tap { position: fixed; bottom: 3vh; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.75); padding: 1.5vh 3vh; border-radius: 2vh; font-size: 2.6vh; }
     #tap[hidden] { display: none; }
     #fs { position: fixed; right: 2vh; bottom: 2vh; font-size: 2.2vh; padding: 1.2vh 2vh; border-radius: 1.5vh; border: 1px solid rgba(255,255,255,.3); background: rgba(255,255,255,.08); color: #fff; }
+    #legacy { position: fixed; inset: 0; padding: 5vh 6vw; box-sizing: border-box; background: #0a0e28; font-size: 3vh; line-height: 1.5; display: none; }
+    #legacy h2 { color: #ffcc00; font-size: 4.5vh; margin: 0 0 2vh; } #legacy li { margin: 1.5vh 0; } .ua { font-size: 1.8vh; opacity: .6; word-break: break-all; }
     body.playing { cursor: none; } body.playing #fs, body.playing #status { opacity: 0; transition: opacity 1s 3s; }
   </style>
 </head>
@@ -40,6 +42,42 @@
   <div id="tap" hidden>🔊 Bấm OK / nhấp chuột để bật âm thanh</div>
   <button id="fs">⛶ Toàn màn hình</button>
   <div id="status">Đang khởi động…</div>
+  <div id="legacy" hidden>
+    <h2>⚠ Trình duyệt TV này chưa nhận được hình từ điện thoại</h2>
+    <p id="legacy-why"></p>
+    <p><b>Cách khác để chơi trên TV này:</b></p>
+    <ul>
+      <li><b>Cáp HDMI</b> từ điện thoại vào TV (iPhone: cáp Lightning/USB-C → HDMI; Android: USB-C → HDMI nếu máy hỗ trợ) → vào game chọn <b>Cách 1</b></li>
+      <li><b>Screen Mirroring</b> của TV Samsung: điều khiển → Nguồn (Source) → Screen Mirroring, rồi trên điện thoại Android bật Smart View / Truyền không dây (iPhone không dùng được với TV đời này)</li>
+      <li><b>Laptop</b> nối TV bằng cáp HDMI → trên laptop mở cùng link game → bấm "📺 Thiết bị này là TV…"</li>
+    </ul>
+    <p id="legacy-ua" class="ua"></p>
+  </div>
+  <!-- Đoạn này viết bằng JavaScript đời cũ (ES5) để TV cũ vẫn chạy được và báo lỗi rõ ràng -->
+  <script>
+    (function () {
+      function $(id) { return document.getElementById(id); }
+      function status(t) { $('status').innerHTML = t; }
+      try { $('game-url').textContent = location.href.replace(/display\.html.*$/, '').replace(/^https?:\/\//, ''); } catch (e) {}
+      var hasModule = 'noModule' in document.createElement('script');
+      var hasRTC = !!(window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection);
+      var why = [];
+      if (!hasRTC) why.push('Không hỗ trợ WebRTC (công nghệ nhận hình trực tiếp từ điện thoại qua Wi-Fi).');
+      if (!hasModule) why.push('Trình duyệt quá cũ, không chạy được JavaScript hiện đại.');
+      function legacy(reasons) {
+        $('pair').style.display = 'none'; $('fs').style.display = 'none';
+        $('legacy').hidden = false; $('legacy').style.display = 'block';
+        $('legacy-why').innerHTML = 'Lý do: ' + reasons.join(' ');
+        $('legacy-ua').textContent = 'Thông tin trình duyệt (chụp gửi để hỗ trợ): ' + navigator.userAgent;
+        status('');
+      }
+      window.onerror = function (msg) { status('Lỗi: ' + msg); };
+      if (why.length) { legacy(why); return; }
+      setTimeout(function () {
+        if (/·/.test($('code').textContent)) legacy(['Không khởi động được trong 20 giây (không tới được máy chủ ghép nối, hoặc trình duyệt không tương thích).']);
+      }, 20000);
+    })();
+  </script>
   <script type="module" src="js/display.js"></script>
 </body>
 </html>
