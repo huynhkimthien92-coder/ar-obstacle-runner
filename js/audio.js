@@ -44,6 +44,7 @@ export const sfx = {
   star: () => [784, 988, 1175, 1568].forEach((f, i) => tone(f, 0.1, { type: 'triangle', vol: 0.1, delay: i * 0.06 })),
   dodge: () => tone(660, 0.06, { type: 'triangle', vol: 0.06 }),
   hit: () => { noise(0.3, 0.3); tone(180, 0.3, { type: 'sawtooth', slide: -120, vol: 0.15 }); },
+  roar: () => { noise(0.9, 0.32); tone(140, 0.9, { type: 'sawtooth', slide: -80, vol: 0.18 }); tone(95, 0.9, { type: 'square', slide: -45, vol: 0.07 }); }, // khủng long gầm
   fire: () => { noise(0.6, 0.35); tone(300, 0.5, { type: 'sawtooth', slide: -250, vol: 0.12 }); },
   tick: () => tone(880, 0.08, { type: 'sine', vol: 0.12 }),
   go: () => tone(1320, 0.25, { type: 'sine', vol: 0.14 }),

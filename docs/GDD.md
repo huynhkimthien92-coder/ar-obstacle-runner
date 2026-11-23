@@ -70,6 +70,22 @@ Thời lượng phiên ngắn là cố ý: vận động toàn thân mệt nhanh
 - **Lưỡi chém (v0.8):** vệt sáng thon — đuôi nhọn, thân dày theo tốc độ vung, đầu bo; nội suy Catmull-Rom (điểm tay từ camera thưa); dài tối đa 30% chiều cao, giữ 0,22 s đường tay gần nhất; tay đứng yên chỉ còn vòng rỗng mờ.
 - **2 người đối kháng (v0.8):** có 2 người trong khung lúc bắt đầu → tự vào chế độ 2 người (chọn 2 người vai rộng nhất = gần camera nhất, xếp trái → phải thành P1 xanh / P2 cam, giữ ID 15 s khi khuất). Mỗi người một hình nhỏ ở đáy theo chỗ đứng thật (cách nhau ≥ 30% màn hình), nhãn P1/P2 trên đầu, 2 lưỡi chém mỗi người. Chung bầu trời, chung đồng hồ; **điểm riêng**, ai nhiều hơn thắng. Bom: −5 điểm + choáng 1,2 s (lưỡi xám, không chém được) thay vì mất mạng. Nhiều trái hơn (+1 mỗi đợt, tối đa 12 trên trời); tầm ngang lưỡi chém 0,55 W (1 người: 0,65 W).
 
+## 3d. Game thứ tư — "Đấu khủng long" (1 người)
+- **Player fantasy:** đứng mặt đối mặt với khủng long — nó nhìn thẳng vào bạn, gầm, lao tới; bạn né, cúi, đỡ rồi phản đòn.
+- **Góc nhìn thứ nhất:** khủng long đi từ chân trời tới (to dần), **quay mặt thẳng vào màn hình** (vẽ chính diện bằng Canvas 2D thuần, không cần ảnh). Người chơi chính là "camera"; khung nhỏ **BẠN** góc trái dưới hiện người thật (đã tách nền) để biết mình đang né / ngồi / đỡ.
+- **Đánh:** điểm yếu đỏ sáng lần lượt hiện trên người khủng long (đầu, ngực, vai…, sống 1,7 s); vung tay nhanh (> 0,8 × H/s) qua điểm yếu = −1 máu. Tay ánh xạ giống Chém trái cây (theo hướng vươn tay so với vai) nên không cần với ra khỏi khung camera.
+- **Bị tấn công (báo trước 1,15–1,35 s: khủng long đỏ rực, gồng, mắt đỏ, chữ hướng dẫn to + âm báo):**
+  | Đòn | Loài | Phản ứng |
+  |---|---|---|
+  | Cắn / Húc | Raptor, T-Rex / Ba sừng | **NÉ** sang hướng mũi tên (bước hoặc nghiêng người ≥ 9% bề ngang khung so với chỗ đứng gốc) |
+  | Vồ / Hất sừng / Lao xuống / Quật đuôi | Raptor / Ba sừng / Thằn lằn bay / T-Rex | **NGỒI** |
+  | Gầm (sóng âm) | T-Rex | **GIƠ 2 TAY** đỡ |
+  | Ném đá | Thằn lằn bay | **ĐẬP** 3 tảng đá bay tới bằng tay |
+  Cửa sổ chấp nhận: sớm 0,35 s, muộn 0,12 s **sau khi đã bù độ trễ màn hình** (đo ở bài đo độ trễ). Chỗ đứng gốc trôi chậm theo người chơi khi không bị tấn công → không phải đứng đúng giữa khung.
+- **Phản công:** né / đỡ đúng → khủng long choáng 1,3 s, hiện **điểm yếu vàng ×2** to.
+- **Tiến trình:** Raptor (6 máu) → Ba sừng (9) → Thằn lằn bay (7) → T-Rex trùm (14); hết 4 con sang vòng mới: máu +40%, gồng / nghỉ nhanh ×0,88. 5 mạng, bất tử 1 s sau khi trúng đòn. Mất dấu người > 0,8 s → khủng long đứng chờ.
+- **Điểm:** trúng 10 × sát thương, né / đỡ 5, đập đá 5 — nhân chuỗi ×1 → ×4 (mỗi 5 lần đúng liên tiếp +1); hạ gục +50 × vòng (trùm ×2).
+
 ## 4. Bảng kinh tế điểm (tuning)
 | Biến | Gốc | Min | Max | Lý do |
 |---|---|---|---|---|
@@ -95,6 +111,7 @@ Thời lượng phiên ngắn là cố ý: vận động toàn thân mệt nhanh
 
 ## Changelog
 - v0.1 (23/11/2026): bản đầu, 5 loại chướng ngại + sao, 3 tier, tutorial 6 bước.
+- v1.0 (23/11/2026): game thứ tư **Đấu khủng long** (góc nhìn thứ nhất, 4 loài vẽ chính diện, né / ngồi / đỡ / đập đá, phản công ×2).
 - v0.9.1 (23/11/2026): Ô an toàn — 2 người đứng sát nhau: ghép người theo vị trí dự đoán + màu áo, gán tối ưu cả nhóm, bỏ khung xương trùng, bỏ chân "lạc" sang người bên cạnh, lọc trung vị vị trí chân; chốt ô theo ô đứng nhiều nhất 0,35 s cuối, bị che lúc chốt thì dùng ô thấy gần nhất (≤ 1,5 s).
 - v0.9 (23/11/2026): lọc "người giả" cho cả 3 game — khung xương phải giống người (rõ mặt + vai, đầu trên vai, tỉ lệ thân/tay hợp lý, nằm trong mặt nạ người) và phải xuất hiện liên tục ≥ 0,45 s, không rung loạn, mới tính là có người (js/personcheck.js). Ngưỡng phát hiện người mới 0,4 → 0,5.
 - v0.8 (23/11/2026): Chém trái cây — lưỡi chém vệt sáng; chế độ 2 người đối kháng.

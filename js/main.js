@@ -13,6 +13,7 @@ import { PlayerTracker, torsoSignature } from './players.js';
 import { TileGame, TileGeom } from './tiles.js';
 import { Cutouts } from './cutout.js';
 import { FruitGame } from './fruits.js';
+import { DinoGame } from './dino.js';
 import { PresenceGate } from './personcheck.js';
 
 const $ = id => document.getElementById(id);
@@ -51,6 +52,8 @@ const app = {
 const ui = { hud: null, hint: '', big: null, panel: null, corner: '', cornerColor: null, cue: null, tiles: null };
 const isTiles = () => settings.game === 'tiles';
 const isFruit = () => settings.game === 'fruit';
+const isDino = () => settings.game === 'dino';
+const segOn = () => settings.look === 'game' || isFruit() || isDino(); // cần mặt nạ tách người
 
 const tvOut = () => settings.output !== 'phone';
 const lagMs = () => settings.lag[settings.output] ?? 0;
@@ -67,7 +70,7 @@ function applyLook(m = app.mode) {
   const real = m === 'setup' || m === 'calib' || m === 'lagtest' || m === 'menu';
   const game = settings.look === 'game' && !real;
   const was = renderer.look;
-  renderer.look = isFruit() && !real ? 'fruit' : game ? 'game' : 'ar'; // Chém trái cây luôn dùng nền trời cao + người thu nhỏ
+  renderer.look = isFruit() && !real ? 'fruit' : isDino() && !real ? 'dino' : game ? 'game' : 'ar'; // Chém trái cây luôn dùng nền trời cao + người thu nhỏ
   renderer.bgDim = m === 'setup' ? 0 : real ? 0.15 : settings.bgDim;
   if (renderer.look === 'game') renderer.setWorld(renderer.H * 0.9, renderer.H * settings.playerScale / 1.7); // thế giới cố định, người thu nhỏ theo "Cỡ người"
   else if (was === 'game') renderer.setWorld(null, null);
@@ -138,7 +141,7 @@ async function startCameraFlow() {
       app.pose = await new PoseEngine().init(settings.model, t => { $('loading-text').textContent = t; ui.panel = { title: t, lines: [] }; });
     }
     await app.pose.setNumPoses(isTiles() ? 4 : isFruit() ? 2 : 1); // Chém trái cây: tối đa 2 người
-    await app.pose.setSegmentation(settings.look === 'game' || isFruit());
+    await app.pose.setSegmentation(segOn());
     bench.info = { delegate: app.pose.delegate, model: app.pose.model, video: `${video.videoWidth}x${video.videoHeight}`, facing: settings.facing, output: settings.output };
     if (app.afterCamera === 'setup') { app.afterCamera = null; enterSetup(); } else enterCalibration();
   } catch (e) {
@@ -199,7 +202,7 @@ function processPose(now) {
   }
   if (main) { app.primaryC = { x: (main[11].x + main[12].x) / 2, y: (main[11].y + main[12].y) / 2 }; app.primaryAt = now; }
   app.mainIdx = Math.max(0, r.all.indexOf(main));
-  if (r.masks && (renderer.look === 'game' || renderer.look === 'fruit')) app.cutouts.update(r.frame, r.masks, r.all);
+  if (r.masks && ['game', 'fruit', 'dino'].includes(renderer.look)) app.cutouts.update(r.frame, r.masks, r.all);
   // người chính phải xuất hiện ổn định ~0,45 s mới tính (lọc đồ vật bị nhận nhầm thoáng qua)
   const fr = app.pose.frame;
   main = app.gate.update(main, now, fr ? fr.width / fr.height : 16 / 9);
@@ -433,6 +436,7 @@ function newGame() {
 
 function startCountdown() {
   if (isFruit()) { if (!app.fg || app.fg.over || ['calib', 'lagtest', 'menu', 'setup'].includes(app.mode)) newFruit(); }
+  else if (isDino()) { if (!app.dg || app.dg.over || ['calib', 'lagtest', 'menu', 'setup'].includes(app.mode)) newDino(); }
   else if (isTiles()) { if (!app.tg || app.tg.over || app.mode === 'calib' || app.mode === 'lagtest' || app.mode === 'menu') newTiles(); }
   else if (!app.game || app.game.over || app.mode === 'calib' || app.mode === 'lagtest') newGame();
   if (app.input === 'camera') motion.beginCalibration(true); // hiệu chỉnh lại nhanh trong lúc đứng chờ
@@ -446,6 +450,7 @@ function startCountdown() {
 function countdownFrame(now, dt) {
   if (isTiles()) return tilesCountdownFrame(now, dt);
   if (isFruit()) return fruitCountdownFrame(now, dt);
+  if (isDino()) return dinoCountdownFrame(now, dt);
   const left = Math.ceil((app.countEnd - now) / 1000);
   if (left !== app.lastCount) { app.lastCount = left; if (left > 0) { big(String(left)); sfx.tick(); } }
   if (now >= app.countEnd) { big('GO!'); sfx.go(); setMode('play'); }
@@ -562,18 +567,19 @@ function gameOver() {
 
 function overFrame(now, dt) {
   if (isFruit()) renderer.fruitScene(dt, now / 1000, app.fg, fruitView(now, false));
+  else if (isDino()) renderer.dinoScene(dt, now / 1000, app.dg, dinoView(now, false));
   else if (isTiles()) renderer.tilesScene(dt, now / 1000, app.tg, drawGeom(), app.input === 'camera' ? app.tracker.list : [], app.tg.roster, null, tilesPeople());
   else renderer.frame(dt, now / 1000, app.game, player(), viewOpts());
   const anyHands = motion.state.handsUp || ((isTiles() || isFruit()) && app.tracker.list.some(p => p.present && p.handsUp));
   if (app.input === 'camera' && anyHands) {
     app.handsSince ||= now;
     if (ui.panel) ui.panel.progress = Math.min(1, (now - app.handsSince) / 1500);
-    if (now - app.handsSince > 1500) { app.game = null; app.tg = null; app.fg = null; startCountdown(); }
+    if (now - app.handsSince > 1500) { app.game = null; app.tg = null; app.fg = null; app.dg = null; startCountdown(); }
   } else { app.handsSince = 0; if (ui.panel) ui.panel.progress = null; }
 }
 
 function pause(title = 'Tạm dừng') {
-  if (app.mode !== 'play' && app.mode !== 'countdown' && app.mode !== 'tiles' && app.mode !== 'fruit') return;
+  if (!['play', 'countdown', 'tiles', 'fruit', 'dino'].includes(app.mode)) return;
   app.pausedFrom = app.mode;
   setMode('paused'); $('pause-title').textContent = title; show('scr-pause'); releaseWakeLock();
   ui.panel = { title: '⏸ ' + title, lines: ['Bấm "Tiếp tục" trên điện thoại'] };
@@ -582,12 +588,12 @@ async function resume() {
   if (!(await ensureCamera())) return;
   show(null); ui.panel = null;
   if (app.pausedFrom === 'tiles') { app.tilesLastT = 0; setMode('tiles'); requestWakeLock(); return; }
-  if (app.pausedFrom === 'fruit') { setMode('fruit'); requestWakeLock(); return; } // Ô an toàn: chơi tiếp ngay (đồng hồ vòng đã dừng)
+  if (app.pausedFrom === 'fruit' || app.pausedFrom === 'dino') { setMode(app.pausedFrom); requestWakeLock(); return; } // Ô an toàn: chơi tiếp ngay (đồng hồ vòng đã dừng)
   app.countEnd = performance.now() + 3000; app.lastCount = 0; setMode('countdown'); requestWakeLock();
 }
 function toMenu() {
   setMode('menu'); setHint(''); big(''); $('hud').hidden = true; releaseWakeLock();
-  stopCamera(); video.classList.remove('on'); app.pts = null; app.game = null; app.tg = null; app.fg = null; ui.hud = null; ui.tiles = null; ui.fruit = null;
+  stopCamera(); video.classList.remove('on'); app.pts = null; app.game = null; app.tg = null; app.fg = null; app.dg = null; ui.hud = null; ui.tiles = null; ui.fruit = null; ui.dino = null;
   ui.panel = link.live ? { title: 'AR Obstacle Runner', lines: ['Chọn chế độ chơi trên điện thoại'] } : null;
   renderer.clear(); show('scr-menu');
 }
@@ -596,6 +602,10 @@ function toMenu() {
 function manualAction(kind) {
   const m = app.manual, tm = app.manualTimers;
   if (isFruit()) return; // Chém trái cây: kéo ngón tay / chuột trên màn hình để chém
+  if (isDino()) { // Đấu khủng long bằng phím: ← → né (tự về giữa), ↓ ngồi, ↑ / H đỡ; kéo chuột để đánh
+    if (kind === 'left' || kind === 'right') { m.lane = kind === 'left' ? 0 : 2; clearTimeout(tm.lane); tm.lane = setTimeout(() => { m.lane = 1; }, 650); return; }
+    if (kind === 'jump') kind = 'hands';
+  }
   if (isTiles() && app.geom) { // Ô an toàn bằng phím: ←→ đổi cột, ↑↓ đổi hàng (↑ = xa camera)
     const g = app.geom;
     if (kind === 'left') m.col = Math.max(0, m.col - 1);
@@ -985,27 +995,118 @@ function fruitOver() {
   setTimeout(() => { if (app.mode === 'over') show('scr-over'); }, 900);
   app.handsSince = 0;
 }
+// ---------------- Game "Đấu khủng long" ----------------
+const DINO_HANDS = { L: '#ffd23f', R: '#ff5a3c', M: '#ffb347' };
+function newDino() {
+  app.dg = new DinoGame({ W: renderer.W, H: renderer.H, seed: (Math.random() * 2 ** 31) | 0, lagMs: lagMs() });
+  app.hands = {}; app.arm = {}; app.fslots = [{}, {}]; app.dinoRef = null; app.dinoLost = 0; app.rated = false;
+  document.querySelectorAll('.fb').forEach(b => { b.disabled = false; });
+  ui.dino = dinoUi(); ui.hud = null; ui.tiles = null; ui.fruit = null;
+}
+function dinoUi() {
+  const g = app.dg, d = g.dino;
+  return { name: d.name, boss: d.key === 'trex', hp: d.hp, maxHp: d.maxHp, wave: g.wave, level: g.level, lives: g.lives, maxLives: g.cfg.lives,
+    score: g.score, combo: g.combo, mult: g.mult, best: store.get('bestDino', 0), padRight: !tvOut() };
+}
+/** Đầu vào: tay (giống Chém trái cây: theo hướng vươn tay so với vai), né = lệch người khỏi chỗ đứng gốc, ngồi, giơ 2 tay. */
+function dinoInput(now) {
+  const s = motion.state, dg = app.dg;
+  if (app.input !== 'camera') {
+    const m = app.manual;
+    return { hands: pointerHands(now).map(h => Object.assign(h, { color: DINO_HANDS.M })), dodge: m.lane - 1, duck: m.ducking, guard: m.handsUp, present: true };
+  }
+  const pl = s.present ? fruitPlace(app.raw, now, app.fslots[0], 0.5) : null;
+  const hands = pl ? cameraHands(pl, now).map(h => Object.assign(h, { color: DINO_HANDS[h.id] || '#fff' })) : [];
+  if (!pl) app.hands = {};
+  // né: so với chỗ đứng "gốc" (trôi chậm theo người chơi khi không bị tấn công) → không phải đứng đúng giữa khung
+  const busy = dg && ['windup', 'attack'].includes(dg.dino.phase);
+  if (app.dinoRef == null || !s.present) app.dinoRef = s.laneX;
+  else if (!busy) app.dinoRef += (s.laneX - app.dinoRef) * Math.min(1, (now - (app.dinoRefT || now)) / 2500);
+  app.dinoRefT = now;
+  const off = s.laneX - app.dinoRef, dodge = off > 0.09 ? 1 : off < -0.09 ? -1 : 0;
+  return { hands, dodge, duck: s.ducking, guard: s.handsUp, present: s.present };
+}
+function dinoView(now, live = true, inp = null) {
+  const it = app.input === 'camera' ? app.cutouts.items[app.mainIdx] : null;
+  let skel = null;
+  if (!it && app.raw) skel = app.raw.map(q => ({ x: renderer.mirror ? 1 - q.x : q.x, y: q.y, v: q.v }));
+  const react = inp ? (inp.dodge < 0 ? '⬅ NÉ' : inp.dodge > 0 ? 'NÉ ➡' : inp.duck ? '⬇ NGỒI' : inp.guard ? '🙌 ĐỠ' : '') : '';
+  return { hands: live && inp ? inp.hands : Object.values(app.hands), pip: app.input === 'camera' ? { it, skel } : null, react, lost: !!inp && !inp.present };
+}
+function dinoCountdownFrame(now, dt) {
+  const left = Math.ceil((app.countEnd - now) / 1000);
+  if (left !== app.lastCount && left > 0) { app.lastCount = left; big(String(left)); sfx.tick(); }
+  const inp = dinoInput(now);
+  ui.dino = dinoUi();
+  renderer.dinoScene(dt, now / 1000, app.dg, dinoView(now, true, inp));
+  if (now >= app.countEnd) { big('CHIẾN!'); sfx.go(); setMode('dino'); }
+}
+function dinoFrame(now, dt) {
+  const dg = app.dg, inp = dinoInput(now);
+  // mất dấu người > 0,8 s: khủng long đứng chờ (không bị đánh oan)
+  if (!inp.present) app.dinoLost ||= now; else app.dinoLost = 0;
+  const lost = app.dinoLost && now - app.dinoLost > 800;
+  if (!lost) dg.update(dt, inp);
+  for (const ev of dg.drain()) onDinoEvent(ev);
+  const d = dg.dino;
+  ui.cue = d.phase === 'windup' && d.attack ? {
+    action: { move: 'move', duck: 'duck', guard: 'hands', smash: 'smash' }[d.attack.need], dir: d.attack.dir, t: d.t * 1.3 / d.windup,
+    label: d.attack.label, say: d.attack.need === 'guard' ? 'GIƠ 2 TAY ĐỠ' : null } : null;
+  ui.dino = dinoUi();
+  renderer.dinoScene(dt, now / 1000, dg, dinoView(now, true, { ...inp, present: !lost }));
+  if (dg.over) dinoOver();
+}
+function onDinoEvent(ev) {
+  const r = renderer;
+  switch (ev.kind) {
+    case 'enter': big(ev.boss ? `👑 ${ev.name}!` : ev.name); sfx.roar(); if (ev.boss) r.shake = 8; break;
+    case 'windup': if (ev.attack.kind === 'roar' || ev.attack.kind === 'bite') sfx.roar();
+      (ev.attack.need === 'move' ? sfx.cue_move : ev.attack.need === 'duck' ? sfx.cue_duck : ev.attack.need === 'guard' ? sfx.cue_hands : sfx.cue_jump)?.(); break;
+    case 'strike': r.shake = 10; break;
+    case 'hit': sfx.coin(); r.burst(ev.x, ev.y, ev.gold ? '#ffd23f' : '#ff3b6b', ev.gold ? 30 : 18); r.popup(ev.x, ev.y - 30 * r.u, ev.gold ? `CHÍ MẠNG −${ev.dmg}` : `−${ev.dmg}`, ev.gold ? '#ffd23f' : '#fff', ev.gold ? 1.3 : 1); buzz(25); break;
+    case 'smash': sfx.coin(); r.burst(ev.x, ev.y, '#b9b2a6', 22); r.popup(ev.x, ev.y, 'BỐP!', '#ffb347'); break;
+    case 'dodged': sfx.star(); r.popup(r.W / 2, r.H * 0.55, { move: 'Né đẹp!', duck: 'Cúi kịp!', guard: 'Đỡ chắc!', smash: 'Đập sạch!' }[ev.attack.need] + ' Phản công!', '#7dffb0', 1.4); break;
+    case 'hurt': sfx.hit(); r.claw = 1; r.shake = 18; r.flash = 0.6; r.flashColor = '200,0,0'; buzz([90, 40, 160]); break;
+    case 'down': sfx.star(); big('HẠ GỤC!'); r.popup(r.W / 2, r.H * 0.4, `+${ev.bonus}`, '#ffd23f', 1.6); r.burst(r.W / 2, r.H * 0.8, '#c8a878', 40); break;
+  }
+}
+function dinoOver() {
+  const g = app.dg;
+  setMode('over'); releaseWakeLock(); sfx.over(); ui.cue = null;
+  let best = store.get('bestDino', 0); const record = g.score > best && g.score > 0; best = Math.max(best, g.score); store.set('bestDino', best);
+  const title = `Bạn đã gục! ${g.score} điểm`;
+  const detail = `Hạ ${g.kills} khủng long · đánh trúng ${g.hits} · né/đỡ ${g.blocks} · chuỗi dài nhất ${g.bestCombo}`;
+  $('over-score').textContent = g.score; $('over-detail').textContent = detail; $('over-best').textContent = record ? '🏆 Kỷ lục mới!' : `Kỷ lục: ${best}`;
+  $('over-hands').textContent = app.input === 'camera' ? 'hoặc giơ 2 tay 1.5 giây để chơi lại' : '';
+  ui.panel = { title, color: '#ff7b2c', lines: [detail, record ? '🏆 Kỷ lục mới!' : `Kỷ lục: ${best}`, app.input === 'camera' ? '🙌 Giơ 2 tay 1.5 giây để chơi lại' : 'Enter / bấm Chơi lại'] };
+  const runs = store.get('runs', []); runs.push({ at: Date.now(), game: 'dino', score: g.score, kills: g.kills, hits: g.hits, blocks: g.blocks, hurt: g.hurt, input: app.input, output: settings.output, lagMs: lagMs() }); store.set('runs', runs.slice(-30));
+  setTimeout(() => { if (app.mode === 'over') show('scr-over'); }, 900);
+  app.handsSince = 0;
+}
 // chạm / kéo chuột để chém (chế độ không camera)
 const toCanvas = e => { const r = renderer.cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * renderer.W / r.width, y: (e.clientY - r.top) * renderer.H / r.height }; };
-$('stage').addEventListener('pointerdown', e => { if (isFruit()) app.ptr = { ...toCanvas(e), down: true }; });
-$('stage').addEventListener('pointermove', e => { if (isFruit() && app.ptr?.down) Object.assign(app.ptr, toCanvas(e)); });
+$('stage').addEventListener('pointerdown', e => { if (isFruit() || isDino()) app.ptr = { ...toCanvas(e), down: true }; });
+$('stage').addEventListener('pointermove', e => { if ((isFruit() || isDino()) && app.ptr?.down) Object.assign(app.ptr, toCanvas(e)); });
 window.addEventListener('pointerup', () => { if (app.ptr) app.ptr.down = false; });
 
 // ---------------- Chọn game ở menu ----------------
 const GAME_DESC = {
   runner: 'Bước né tường, nhảy qua hố lửa, ngồi tránh laser, giơ tay hái sao. 1 người.',
   tiles: 'Sàn nhà thành lưới ô. Hết giờ phải đứng trên Ô XANH — ô đỏ là hố lửa! Ô đổi ngẫu nhiên mỗi vòng. 1–4 người, người trụ lại cuối cùng thắng.',
+  dino: 'Khủng long lao tới, nhìn thẳng vào bạn! Vung tay đánh điểm yếu đang sáng; khi nó gồng đỏ thì NÉ sang bên, NGỒI xuống, GIƠ 2 TAY đỡ hoặc ĐẬP đá bay tới. 4 loài, T-Rex là trùm. 1 người.',
   fruit: 'Vung 2 tay chém trái cây rơi từ trên xuống, né bom. Đưa tay cao hơn đầu một chút là lưỡi chém đã chạm đỉnh màn hình — không cần với cao. 75 giây, 1–2 người (2 người đứng vào khung = đối kháng).',
 };
 function renderGameSel() {
   $('g-runner').classList.toggle('on', settings.game === 'runner'); $('g-runner').setAttribute('aria-checked', settings.game === 'runner');
   $('g-tiles').classList.toggle('on', settings.game === 'tiles'); $('g-tiles').setAttribute('aria-checked', settings.game === 'tiles');
   $('g-fruit').classList.toggle('on', settings.game === 'fruit'); $('g-fruit').setAttribute('aria-checked', settings.game === 'fruit');
+  $('g-dino').classList.toggle('on', settings.game === 'dino'); $('g-dino').setAttribute('aria-checked', settings.game === 'dino');
   $('game-desc').textContent = GAME_DESC[settings.game];
 }
 $('g-runner').onclick = () => { settings.game = 'runner'; saveSettings(); renderGameSel(); };
 $('g-tiles').onclick = () => { settings.game = 'tiles'; saveSettings(); renderGameSel(); };
 $('g-fruit').onclick = () => { settings.game = 'fruit'; saveSettings(); renderGameSel(); };
+$('g-dino').onclick = () => { settings.game = 'dino'; saveSettings(); renderGameSel(); };
 renderGameSel();
 
 // ---------------- Wake lock / lifecycle ----------------
@@ -1055,7 +1156,7 @@ $('dlg-settings').addEventListener('close', () => {
     bodyMode: $('set-body').value, cueSound: $('set-cue').checked,
     look: $('set-look').value, playerScale: +$('set-scale').value, bgDim: +$('set-dim').value,
   });
-  app.pose?.setSegmentation(settings.look === 'game' || isFruit()); app.ps = null;
+  app.pose?.setSegmentation(segOn()); app.ps = null;
   applyLook();
   const v = +$('set-lag').value;
   if (v !== lagMs()) { settings.lag[settings.output] = v; settings.lagMeasured[settings.output] = true; }
@@ -1135,8 +1236,10 @@ function loop(now) {
     case 'over': overFrame(now, dt); break;
     case 'tiles': tilesFrame(now, dt); break;
     case 'fruit': fruitFrame(now, dt); break;
+    case 'dino': dinoFrame(now, dt); break;
     case 'paused':
       if (isFruit() && app.fg) renderer.fruitScene(0, now / 1000, app.fg, fruitView(now, false));
+      else if (isDino() && app.dg) renderer.dinoScene(0, now / 1000, app.dg, dinoView(now, false));
       else if (isTiles() && app.tg) renderer.tilesScene(0, now / 1000, app.tg, drawGeom(), app.tracker.list, app.tg.roster, null, tilesPeople());
       else if (app.game) renderer.frame(0, now / 1000, app.game, player(), viewOpts());
       break;

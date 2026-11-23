@@ -4,6 +4,8 @@ import { CONFIG } from './config.js';
 import { T } from './levels.js';
 import { SKELETON } from './pose.js';
 import { TileGeom } from './tiles.js';
+import { drawDino, drawDinoBg, drawRock } from './dinodraw.js';
+import { dinoBox } from './dino.js';
 
 const R = CONFIG.RENDER;
 
@@ -87,6 +89,7 @@ export class Renderer {
     if (!this.opaque) return;
     if (this.look === 'game') { this.bgGame(); return; }
     if (this.look === 'fruit') { this.bgFruit(); return; }
+    if (this.look === 'dino') { drawDinoBg(this, this.scroll || 0); return; }
     // Canvas tự vẽ nền (hình camera hoặc nền tối) thay vì để thẻ <video> bên dưới lộ ra: không phụ thuộc trình duyệt
     // ghép lớp (lỗi trên Android), và khi phát sang TV qua Wi-Fi thì TV nhận đúng canvas này.
     const v = this.video;
@@ -321,6 +324,133 @@ export class Renderer {
     ctx.restore();
   }
 
+  /**
+   * Cảnh ĐẤU KHỦNG LONG (góc nhìn thứ nhất): khủng long nhìn thẳng vào màn hình, điểm yếu sáng, đá bay tới,
+   * khung nhỏ góc trái dưới hiện chính người chơi (để biết mình đang né / ngồi / đỡ).
+   * view: { hands, pip: { it | skel }, react: '⬅ NÉ' … , lost }
+   */
+  dinoScene(dt, tSec, dg, view) {
+    const { ctx, W, H } = this, u = this.u;
+    this.scroll = tSec;
+    this.clear();
+    const d = dg.dino, key = d.key;
+    const A = { t: tSec, jaw: 0.15 + 0.1 * Math.sin(tSec * 2), look: Math.sin(tSec * 0.7) * 0.3, glow: 0, crouch: 0, flap: 1 };
+    let B = dinoBox(W, H, key, d.z, d.sway);
+    let sx = 1, ox = 0, oy = 0, focus = { x: B.x, y: B.y - B.h * 0.8 }, rot = 0, alpha = 1, shake = 0;
+    const atk = d.attack, dir = atk?.dir || 0;
+    if (d.phase === 'enter') { B.y += Math.abs(Math.sin(tSec * 7)) * -H * 0.008 * B.s; A.jaw = 0.1; }
+    else if (d.phase === 'windup') {
+      const k = Math.min(1, d.t / d.windup);
+      A.glow = k; A.crouch = k; shake = k * 4 * u;
+      if (atk.need === 'move') { A.look = -dir * k; ox = -dir * W * 0.04 * k; }           // ngắm sang phía người chơi phải tránh
+      if (atk.kind === 'bite' || atk.kind === 'roar') A.jaw = 0.2 + 0.6 * k;
+      if (atk.kind === 'rocks' || key === 'ptero') A.flap = 1 + k;
+    } else if (d.phase === 'attack') {
+      const e = Math.min(1, d.t / 0.32), ee = e * (2 - e);                                  // lao tới rất nhanh
+      A.glow = 1;
+      if (atk.kind === 'bite') { A.jaw = 1; sx = 1 + 0.9 * ee; ox = -dir * W * 0.22 * ee; focus = { x: B.x, y: B.y - B.h * 0.85 }; }
+      else if (atk.kind === 'charge') { sx = 1 + 0.9 * ee; ox = -dir * W * 0.28 * ee; oy = H * 0.05 * ee; focus = { x: B.x, y: B.y - B.h * 0.4 }; }
+      else if (atk.need === 'duck' && atk.kind !== 'tail') { sx = 1 + 0.7 * ee; oy = -H * 0.12 * ee; A.jaw = 0.9; focus = { x: B.x, y: B.y - B.h * 0.6 }; }
+      else if (atk.kind === 'roar') { A.jaw = 1; shake = 10 * u; }
+      else if (atk.kind === 'tail') rot = -0.12 * ee;
+      else if (atk.kind === 'rocks') { A.flap = 2.2; A.jaw = 0.8; }
+    } else if (d.phase === 'counter') { A.look = Math.sin(tSec * 18) * 0.6; A.jaw = 0.5; rot = Math.sin(tSec * 9) * 0.03; }
+    else if (d.phase === 'down') { const k = Math.min(1, d.t / 1.2); rot = 0.9 * k * (key === 'ptero' ? -1 : 1); alpha = 1 - Math.max(0, (d.t - 0.9) / 0.9); oy = H * 0.05 * k; A.jaw = 0.7; }
+    if (d.recoil) { sx *= 1 - 0.05 * d.recoil; oy -= H * 0.01 * d.recoil; }
+    // khủng long vẽ vào canvas đệm → tô sáng trắng khi trúng đòn / đỏ khi gồng mà không lem ra ngoài hình
+    const oc = this._dinoCv || (this._dinoCv = document.createElement('canvas'));
+    if (oc.width !== this.cv.width || oc.height !== this.cv.height) { oc.width = this.cv.width; oc.height = this.cv.height; }
+    const c = oc.getContext('2d');
+    c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, oc.width, oc.height); c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    c.save();
+    c.translate(ox + (Math.random() - 0.5) * shake, oy + (Math.random() - 0.5) * shake);
+    c.translate(focus.x, focus.y); c.scale(sx, sx); c.translate(-focus.x, -focus.y);
+    if (rot) { c.translate(B.x, B.y); c.rotate(rot); c.translate(-B.x, -B.y); }
+    drawDino(c, key, B, A);
+    c.restore();
+    c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'source-atop';
+    if (d.flash > 0) { c.fillStyle = `rgba(255,255,255,${0.75 * d.flash})`; c.fillRect(0, 0, oc.width, oc.height); }
+    else if (A.glow > 0 && d.phase === 'windup') { c.fillStyle = `rgba(255,30,0,${0.22 * A.glow * (0.7 + 0.3 * Math.sin(tSec * 30))})`; c.fillRect(0, 0, oc.width, oc.height); }
+    c.restore();
+    if (d.phase === 'windup') { // quầng đỏ phía sau khi gồng đòn
+      const g = ctx.createRadialGradient(B.x, B.y - B.h * 0.5, B.h * 0.1, B.x, B.y - B.h * 0.5, B.h * 0.9);
+      g.addColorStop(0, `rgba(255,40,0,${0.35 * A.glow})`); g.addColorStop(1, 'rgba(255,40,0,0)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    }
+    ctx.save(); ctx.globalAlpha = alpha; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(oc, 0, 0); ctx.restore();
+    // đòn đặc biệt
+    if (d.phase === 'attack' && atk.kind === 'roar') {
+      const k = Math.min(1, d.t / 0.4);
+      for (let i = 0; i < 4; i++) {
+        const rr = (k + i * 0.25) % 1;
+        ctx.strokeStyle = `rgba(255,240,200,${0.6 * (1 - rr)})`; ctx.lineWidth = (6 + 20 * rr) * u;
+        ctx.beginPath(); ctx.arc(B.x, B.y - B.h * 0.85, H * (0.1 + rr * 0.9), 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+    if (d.phase === 'attack' && atk.kind === 'tail') { // đuôi khổng lồ quét ngang ngang tầm đầu
+      const k = Math.min(1, d.t / 0.35), x = W * (1.3 - 1.6 * k), y = H * 0.3;
+      ctx.save(); ctx.translate(x, y);
+      const g = ctx.createLinearGradient(0, -H * 0.1, 0, H * 0.1); g.addColorStop(0, '#6f9a4a'); g.addColorStop(1, '#2f4a1e');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(-W * 0.05, 0); ctx.quadraticCurveTo(W * 0.3, -H * 0.16, W * 0.9, -H * 0.1); ctx.lineTo(W * 0.9, H * 0.12); ctx.quadraticCurveTo(W * 0.3, H * 0.14, -W * 0.05, 0); ctx.fill();
+      ctx.restore();
+    }
+    if (d.phase === 'counter') { // choáng: sao quay quanh đầu
+      for (let i = 0; i < 3; i++) { const a = tSec * 4 + i * 2.1; this.ctx.font = `${Math.round(28 * u)}px system-ui`; ctx.textAlign = 'center'; ctx.fillText('💫', B.x + Math.cos(a) * B.w * 0.25, B.y - B.h * 0.98 + Math.sin(a) * B.h * 0.05); }
+    }
+    // đá bay
+    for (const k of dg.rocks || []) if (!k.smashed && k.z > 0 && k.z <= 1) drawRock(ctx, k.x, k.y, k.r, tSec);
+    // điểm yếu
+    const w = dg.weakNow();
+    if (w) {
+      const pulse = 1 + 0.12 * Math.sin(tSec * 10), r = w.r * pulse, fade = Math.min(1, (w.life - w.age) * 3);
+      ctx.save(); ctx.globalAlpha = fade;
+      const col = w.gold ? '#ffd23f' : '#ff3b6b';
+      const g = ctx.createRadialGradient(w.x, w.y, 0, w.x, w.y, r * 1.6); g.addColorStop(0, w.gold ? 'rgba(255,230,120,0.75)' : 'rgba(255,80,120,0.55)'); g.addColorStop(1, 'rgba(255,80,120,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(w.x, w.y, r * 1.6, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = col; ctx.lineWidth = 5 * u; ctx.beginPath(); ctx.arc(w.x, w.y, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.lineWidth = 3 * u; ctx.beginPath(); ctx.arc(w.x, w.y, r * 0.55, tSec * 3, tSec * 3 + Math.PI * 1.4); ctx.stroke();
+      for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + tSec; ctx.beginPath(); ctx.moveTo(w.x + Math.cos(a) * r * 0.75, w.y + Math.sin(a) * r * 0.75); ctx.lineTo(w.x + Math.cos(a) * r * 1.25, w.y + Math.sin(a) * r * 1.25); ctx.stroke(); }
+      ctx.restore();
+      if (w.gold) { ctx.font = `900 ${Math.round(30 * u)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = '#ffd23f'; ctx.fillText('×2', w.x, w.y - r * 1.35); }
+    }
+    // vết cào khi bị trúng đòn
+    if (this.claw > 0) {
+      this.claw = Math.max(0, this.claw - dt * 0.9);
+      ctx.save(); ctx.globalAlpha = Math.min(1, this.claw * 1.5);
+      const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.9); v.addColorStop(0, 'rgba(160,0,0,0)'); v.addColorStop(1, 'rgba(160,0,0,0.6)');
+      ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+      ctx.lineCap = 'round';
+      for (let i = 0; i < 3; i++) {
+        const x0 = W * (0.32 + i * 0.12), y0 = H * 0.18, x1 = x0 + W * 0.1, y1 = H * 0.78;
+        ctx.strokeStyle = 'rgba(60,0,0,0.8)'; ctx.lineWidth = 22 * u; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(x0 + W * 0.08, H * 0.45, x1, y1); ctx.stroke();
+        ctx.strokeStyle = 'rgba(230,30,30,0.95)'; ctx.lineWidth = 10 * u; ctx.stroke();
+      }
+      ctx.restore();
+    }
+    // khung "BẠN" góc trái dưới
+    const ph = H * 0.28, pw = ph * 0.72, px = 16 * u, py = H - ph - 16 * u;
+    ctx.save();
+    ctx.fillStyle = 'rgba(10,12,30,0.55)'; ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2 * u;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(px, py, pw, ph, 12 * u) : ctx.rect(px, py, pw, ph); ctx.fill(); ctx.stroke(); ctx.clip();
+    const it = view.pip?.it;
+    if (it?.canvas) {
+      const s = Math.min(pw / it.canvas.width, ph * 0.92 / it.canvas.height), dw = it.canvas.width * s, dh = it.canvas.height * s;
+      ctx.translate(px + pw / 2, py + ph - dh - 4 * u); if (this.mirror) ctx.scale(-1, 1);
+      ctx.drawImage(it.canvas, -dw / 2, 0, dw, dh);
+    } else if (view.pip?.skel) {
+      ctx.globalAlpha = 0.9; ctx.strokeStyle = '#7dffb0'; ctx.lineWidth = 3 * u; ctx.lineCap = 'round'; ctx.beginPath();
+      for (const [a, b] of SKELETON) { const P = view.pip.skel[a], Q = view.pip.skel[b]; if (P.v < 0.5 || Q.v < 0.5) continue; ctx.moveTo(px + P.x * pw, py + P.y * ph); ctx.lineTo(px + Q.x * pw, py + Q.y * ph); }
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.font = `800 ${Math.round(18 * u)}px system-ui, sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillStyle = '#fff'; ctx.fillText('BẠN', px + 8 * u, py + 6 * u);
+    if (view.react) { ctx.font = `900 ${Math.round(24 * u)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = '#7dffb0'; ctx.fillText(view.react, px + pw / 2, py - 32 * u); }
+    if (view.lost) { ctx.font = `900 ${Math.round(40 * u)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#ffd23f'; ctx.fillText('👀 Quay lại khung hình để đấu tiếp', W / 2, H * 0.5); }
+    for (const h of view.hands || []) this.blade(h, tSec);
+    this.effects(dt);
+  }
+
   /** Vẽ người đã cắt nền với điểm neo tuỳ ý: điểm (fx,fy) của khung nhận diện → đặt tại (x,y) màn hình, thu nhỏ s. */
   drawPersonAt(it, af, ad, s, mirror) {
     if (!it?.canvas) return;
@@ -446,6 +576,18 @@ export class Renderer {
       if (F.best != null) text(`Kỷ lục: ${F.best}`, W - 24 * u, 92 * u, 22, '#d6e4ff', 'right', 600);
       }
     }
+    if (ui.dino) {
+      const D = ui.dino, bw = Math.min(W * 0.5, 620 * u), bx = (W - bw) / 2;
+      text(`${D.boss ? '👑 ' : ''}${D.name}`, W / 2, 30 * u, 30, D.boss ? '#ffd23f' : '#fff');
+      ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(bx - 3 * u, 54 * u, bw + 6 * u, 22 * u);
+      ctx.fillStyle = D.hp / D.maxHp < 0.3 ? '#ff3b3b' : '#ff7b2c'; ctx.fillRect(bx, 57 * u, bw * Math.max(0, D.hp / D.maxHp), 16 * u);
+      text(`Con ${D.wave} · Vòng ${D.level}`, W / 2, 98 * u, 20, '#d6e4ff', 'center', 700);
+      text('♥'.repeat(Math.max(0, D.lives)) + '♡'.repeat(Math.max(0, D.maxLives - D.lives)), 24 * u, 40 * u, 40, '#ff4d6d', 'left');
+      const rx = W - (D.padRight ? 86 : 24) * u; // chừa chỗ nút tạm dừng trên điện thoại
+      text(String(D.score), rx, 44 * u, 52, '#fff', 'right');
+      if (D.mult > 1) text(`×${D.mult} chuỗi ${D.combo}`, rx, 90 * u, 22, '#7dffb0', 'right', 800);
+      else if (D.best != null) text(`Kỷ lục: ${D.best}`, rx, 90 * u, 20, '#d6e4ff', 'right', 600);
+    }
     if (ui.cue) this.cue(ui.cue, tMs, u, text);
     else if (ui.hint) text(ui.hint, W / 2, H * 0.25, 54);
     if (ui.big && tMs - ui.big.at < 950) {
@@ -487,7 +629,7 @@ export class Renderer {
   /** Gợi ý nhìn được từ xa: viền màn hình đổi màu theo động tác + biểu tượng thật to, đậm dần khi vật tới gần. */
   cue(cue, tMs, u, text) {
     const { ctx, W, H } = this;
-    const C = { jump: ['#00e5ff', '⬆', 'NHẢY'], duck: ['#c77dff', '⬇', 'NGỒI'], move: ['#ffd23f', cue.dir < 0 ? '⬅' : '➡', 'NÉ'], hands: ['#fff27a', '🙌', 'GIƠ TAY'] }[cue.action];
+    const C = { jump: ['#00e5ff', '⬆', 'NHẢY'], duck: ['#c77dff', '⬇', 'NGỒI'], move: ['#ffd23f', cue.dir < 0 ? '⬅' : '➡', 'NÉ'], hands: ['#fff27a', '🙌', 'GIƠ TAY'], smash: ['#ffb347', '👊', 'ĐẬP ĐÁ'] }[cue.action];
     if (!C) return;
     const k = Math.max(0, Math.min(1, 1 - cue.t / 1.3));
     const pulse = 0.75 + 0.25 * Math.sin(tMs / 70);
@@ -498,8 +640,9 @@ export class Renderer {
     ctx.globalAlpha = 0.55 + 0.45 * k;
     const size = Math.min(W, H) * (0.16 + 0.08 * k) / u;
     const y = H * 0.22;
-    if (cue.action === 'move') text(`${cue.dir < 0 ? C[1] + ' ' : ''}${C[2]}${cue.dir > 0 ? ' ' + C[1] : ''}`, W / 2, y, size * 0.8, C[0]);
-    else { text(C[1], W / 2, y, size, C[0]); text(C[2], W / 2, y + size * u * 0.85, size * 0.42, C[0]); }
+    if (cue.label) text(cue.label, W / 2, H * 0.64, size * 0.36, '#ff5a3c'); // tên đòn khủng long sắp tung ra (dưới chữ hướng dẫn)
+    if (cue.action === 'move') text(`${cue.dir < 0 ? C[1] + ' ' : ''}${cue.say || C[2]}${cue.dir > 0 ? ' ' + C[1] : ''}`, W / 2, y, size * 0.8, C[0]);
+    else { text(C[1], W / 2, y, size, C[0]); text(cue.say || C[2], W / 2, y + size * u * 0.85, size * 0.42, C[0]); }
     ctx.restore();
   }
 

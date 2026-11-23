@@ -1,10 +1,10 @@
 // Service worker: app shell cache-first + cache file MediaPipe (wasm ~14MB, model ~5MB) để lần sau chơi offline.
 // Đổi VERSION mỗi lần deploy để người dùng nhận bản mới.
-const VERSION = 'aor-v1.9.2';
+const VERSION = 'aor-v2.0.0';
 const SHELL = [
   './', './index.html', './display.html', './css/style.css', './manifest.webmanifest',
   './js/main.js', './js/config.js', './js/camera.js', './js/pose.js', './js/filters.js', './js/motion.js',
-  './js/game.js', './js/levels.js', './js/render.js', './js/audio.js', './js/bench.js', './js/link.js', './js/display.js', './js/players.js', './js/tiles.js', './js/cutout.js', './js/fruits.js', './js/personcheck.js',
+  './js/game.js', './js/levels.js', './js/render.js', './js/audio.js', './js/bench.js', './js/link.js', './js/display.js', './js/players.js', './js/tiles.js', './js/cutout.js', './js/fruits.js', './js/personcheck.js', './js/dino.js', './js/dinodraw.js',
   './icons/icon-192.png', './icons/icon-512.png',
 ];
 const RUNTIME = 'aor-runtime-v1'; // file CDN có version trong URL → bất biến, giữ qua các bản deploy
