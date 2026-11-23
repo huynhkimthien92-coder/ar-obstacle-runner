@@ -114,3 +114,63 @@ test('theo dõi: chân từ mắt cá; không thấy chân thì ước lượng 
   tr2.update([person(0.5, false)], map, 1000, 600, 33);
   assert.equal(tr2.list[0].feetSeen, false); assert.ok(tr2.list[0].feet.y > 600 * 0.55);
 });
+
+// ---- 2 người đứng sát nhau ----
+const RED = [0.8, 0.1, 0.1, 0.8, 0.1, 0.1, 0.7, 0.1, 0.1], BLUE = [0.1, 0.2, 0.8, 0.1, 0.2, 0.8, 0.1, 0.2, 0.7];
+test('theo dõi: 2 người áo khác màu đi sát / chéo qua nhau vẫn giữ đúng ID', () => {
+  const tr = new PlayerTracker(4); let t = 0;
+  const sig = lm => lm.sig;
+  const mk = (cx, s) => Object.assign(person(cx), { sig: s });
+  for (let i = 0; i < 20; i++) tr.update([mk(0.4, RED), mk(0.6, BLUE)], map, 1000, 600, (t += 66), sig);
+  const red = tr.list.find(p => p.c.x < 500).id;
+  // tiến sát nhau, đi chéo qua nhau (vị trí gần như trùng ở giữa), MediaPipe trả thứ tự lộn xộn, đôi lúc mất 1 người
+  for (let i = 0; i <= 20; i++) {
+    const a = mk(0.4 + i * 0.01, RED), b = mk(0.6 - i * 0.01, BLUE);
+    const dets = i % 5 === 3 ? [b] : i % 2 ? [a, b] : [b, a];
+    tr.update(dets, map, 1000, 600, (t += 66), sig);
+  }
+  const R = tr.list.find(p => p.id === red);
+  assert.ok(R.c.x > 500, 'người áo đỏ đã sang bên phải mà vẫn giữ ID cũ');
+  assert.equal(tr.list.filter(p => p.present).length, 2);
+});
+
+test('theo dõi: MediaPipe vẽ trùng 2 khung xương cho 1 người → chỉ tính 1 người', () => {
+  const tr = new PlayerTracker(4); let t = 0;
+  for (let i = 0; i < 12; i++) tr.update([person(0.5), person(0.502)], map, 1000, 600, (t += 66));
+  assert.equal(tr.list.length, 1);
+});
+
+test('theo dõi: chân "lạc" sang người bên cạnh → ước lượng chân từ hông', () => {
+  const tr = new PlayerTracker(4);
+  const lm = person(0.5); lm[27] = { x: 0.8, y: 0.9, v: 0.9 }; lm[28] = { x: 0.78, y: 0.9, v: 0.9 };
+  tr.update([lm], map, 1000, 600, 33);
+  assert.equal(tr.list[0].feetSeen, false); assert.ok(Math.abs(tr.list[0].feet.x - 500) < 20);
+});
+
+test('chốt ô: lấy ô đứng nhiều nhất cuối vòng; bị che lúc chốt thì dùng ô vừa thấy', () => {
+  const tg = new TileGame({ rows: 1, cols: 3, seed: 2 }); tg.start(['a', 'b']);
+  let t = 0; const pos = new Map();
+  while (tg.phase !== 'move') { t += 33; tg.update(0.033, t, pos); }
+  tg.tiles = ['g', 'r', 'g'];
+  let i = 0;
+  while (tg.phase === 'move') {
+    t += 33; i++;
+    pos.clear();
+    pos.set('a', { r: 0, c: i % 4 === 0 ? 1 : 0 });        // a đứng ô xanh, thỉnh thoảng rung sang ô đỏ bên cạnh
+    if (tg.timeLeft > 0.5) pos.set('b', { r: 0, c: 2 });   // b bị a che khuất ở nửa giây cuối
+    tg.update(0.033, t, pos);
+  }
+  const A = tg.roster.find(p => p.id === 'a'), B = tg.roster.find(p => p.id === 'b');
+  assert.equal(A.lastResult, 'safe'); assert.equal(B.lastResult, 'safe');
+});
+
+test('theo dõi: 2 người chập vào nhau rồi tách ra → nhờ màu áo không bị tráo ID', () => {
+  const tr = new PlayerTracker(4); let t = 0; const sig = lm => lm.sig;
+  const mk = (cx, s) => Object.assign(person(cx), { sig: s });
+  for (let i = 0; i < 20; i++) tr.update([mk(0.4, RED), mk(0.6, BLUE)], map, 1000, 600, (t += 66), sig);
+  const red = tr.list.find(p => p.c.x < 500).id;
+  for (let i = 0; i <= 10; i++) tr.update([mk(0.4 + i * 0.009, RED), mk(0.6 - i * 0.009, BLUE)].reverse(), map, 1000, 600, (t += 66), sig);
+  for (let i = 0; i < 6; i++) tr.update([mk(0.5, RED), mk(0.5, BLUE)].slice(i % 2), map, 1000, 600, (t += 66), sig);
+  for (let i = 10; i >= 0; i--) tr.update([mk(0.4 + i * 0.009, RED), mk(0.6 - i * 0.009, BLUE)], map, 1000, 600, (t += 66), sig);
+  assert.ok(tr.list.find(p => p.id === red).c.x < 500);
+});

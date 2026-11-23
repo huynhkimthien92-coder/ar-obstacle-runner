@@ -11,6 +11,8 @@ export const TILES = {
   reshuffleFrom: 6,                   // từ vòng 6: giữa chừng ô đổi màu 1 lần (phải di chuyển lại)
   occupiedRedProb: 0.8,               // ô đang có người đứng thường hoá đỏ → buộc phải di chuyển
   livesSolo: 3, livesMulti: 2,
+  voteMs: 350,                        // lúc chốt: lấy ô đứng NHIỀU NHẤT trong 0,35 s cuối (đỡ nhảy ô do rung khung xương)
+  graceMs: 1500,                      // khuất (bị người khác che) lúc chốt: dùng ô thấy gần nhất nếu chưa quá 1,5 s
 };
 
 /** Hình học lưới ô trên màn hình (phối cảnh sàn) + tra ngược: điểm chân (x,y) → ô (r,c). */
@@ -95,6 +97,7 @@ export class TileGame {
     this.tiles = new Array(this.n).fill('g');
     this.round = 0; this.phase = 'idle'; this.phaseT = 0; this.events = []; this.over = false;
     this.roster = []; this.winner = null; this.reshuffled = false;
+    this.clock = 0; this.hist = new Map(); // id → [{ t, k }] lịch sử ô đứng (giây theo đồng hồ game)
   }
 
   /** Người có mặt lúc bắt đầu sẽ được đăng ký vào ván. */
@@ -135,7 +138,13 @@ export class TileGame {
    */
   update(dt, tMs, pos) {
     if (this.over || this.phase === 'idle') return;
-    this.phaseT += dt;
+    this.phaseT += dt; this.clock += dt;
+    for (const p of this.roster) {
+      const q = pos.get(p.id), h = this.hist.get(p.id) || [];
+      if (q) h.push({ t: this.clock, k: this.idx(q.r, q.c) });
+      while (h.length && this.clock - h[0].t > this.cfg.graceMs / 1000 + 0.5) h.shift();
+      this.hist.set(p.id, h);
+    }
     const occupied = () => this.alive.map(p => pos.get(p.id)).filter(Boolean).map(q => this.idx(q.r, q.c));
     if (this.phase === 'reveal') {
       if (this.phaseT >= this.cfg.revealSec) { this._pattern(occupied()); this.phase = 'move'; this.phaseT = 0; this.events.push({ kind: 'go' }); }
@@ -154,9 +163,23 @@ export class TileGame {
     }
   }
 
+  /** Ô người chơi đứng lúc chốt: ô xuất hiện nhiều nhất trong voteMs cuối; khuất thì lấy ô gần nhất trong graceMs. */
+  _settled(id, pos) {
+    const h = this.hist.get(id) || [], now = this.clock;
+    const recent = h.filter(e => now - e.t <= this.cfg.voteMs / 1000);
+    if (recent.length) {
+      const cnt = new Map(); for (const e of recent) cnt.set(e.k, (cnt.get(e.k) || 0) + 1 + (e.t - now + 1) * 0.01); // hoà phiếu → ô mới hơn
+      const k = [...cnt.entries()].sort((a, b) => b[1] - a[1])[0][0];
+      return { r: Math.floor(k / this.cols), c: k % this.cols };
+    }
+    const last = h[h.length - 1];
+    if (last && now - last.t <= this.cfg.graceMs / 1000) return { r: Math.floor(last.k / this.cols), c: last.k % this.cols, stale: true };
+    return pos.get(id) || null;
+  }
+
   _check(pos) {
     for (const p of this.alive) {
-      const q = pos.get(p.id);
+      const q = this._settled(p.id, pos);
       const burn = !q || this.colorAt(q.r, q.c) === 'r'; // không thấy người lúc chốt = không đứng trên ô xanh
       p.lastResult = q ? (burn ? 'burn' : 'safe') : 'missing'; p.lastTile = q;
       if (burn) { p.lives--; if (p.lives <= 0) p.alive = false; this.events.push({ kind: 'burn', id: p.id, tile: q, out: !p.alive }); }

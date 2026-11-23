@@ -9,7 +9,7 @@ import { Renderer } from './render.js';
 import { sfx, unlockAudio, setMuted, buzz, audioStreamTrack, audioToLocal } from './audio.js';
 import { Bench } from './bench.js';
 import { Link } from './link.js';
-import { PlayerTracker } from './players.js';
+import { PlayerTracker, torsoSignature } from './players.js';
 import { TileGame, TileGeom } from './tiles.js';
 import { Cutouts } from './cutout.js';
 import { FruitGame } from './fruits.js';
@@ -208,7 +208,11 @@ function processPose(now) {
   app.raw = sm;
   app.pts = sm ? sm.map(app.mapper) : null;
   motion.update(app.pts, app.raw, renderer.W, renderer.H, now);
-  if (isTiles() || isFruit()) app.tracker.update(r.all, app.mapper, renderer.W, renderer.H, now);
+  if (isTiles() || isFruit()) {
+    // chữ ký màu áo từng người → 2 người đứng sát nhau không bị tráo ID
+    const fc = app.pose.fctx, f = r.frame, sigOf = fc && r.all.length > 1 ? lm => torsoSignature(fc, f.width, f.height, lm) : null;
+    app.tracker.update(r.all, app.mapper, renderer.W, renderer.H, now, sigOf);
+  }
   updateWorld();
   const pr = motion.state.present;
   if (app.prevPresent && !pr) app.lostEvents.push(now);
@@ -805,14 +809,15 @@ function tilesOver() {
 const FRUIT_PERSON = 0.3; // người chỉ cao 30% màn hình, đứng ở đáy → bầu trời cao để chém
 const HAND_COLORS = { L: '#00e5ff', R: '#ff9f1c', M: '#7dffb0', L1: '#00e5ff', R1: '#6fb8ff', L2: '#ff9f1c', R2: '#ff5ea8' };
 const DUO_COLORS = ['#00e5ff', '#ff9f1c']; // P1 xanh, P2 cam
-function newFruit() {
-  // Đủ 2 người trong khung lúc bắt đầu → chơi đối kháng. Chọn 2 người gần camera nhất (vai rộng nhất), xếp trái → phải.
-  let duo = null;
-  if (app.input === 'camera') {
-    const ps = app.tracker.list.filter(p => p.present && p.pts)
-      .sort((a, b) => Math.abs(b.pts[11].x - b.pts[12].x) - Math.abs(a.pts[11].x - a.pts[12].x)).slice(0, 2);
-    if (ps.length === 2) { duo = ps.sort((a, b) => a.c.x - b.c.x).map(p => p.id); app.tracker.setKeep(duo); }
-  }
+/** Đủ 2 người trong khung → chơi đối kháng. Chọn 2 người gần camera nhất (vai rộng nhất), xếp trái → phải. */
+function fruitDuoIds() {
+  if (app.input !== 'camera') return null;
+  const ps = app.tracker.list.filter(p => p.present && p.pts)
+    .sort((a, b) => Math.abs(b.pts[11].x - b.pts[12].x) - Math.abs(a.pts[11].x - a.pts[12].x)).slice(0, 2);
+  return ps.length === 2 ? ps.sort((a, b) => a.c.x - b.c.x).map(p => p.id) : null;
+}
+function newFruit(duo = fruitDuoIds()) {
+  if (duo) app.tracker.setKeep(duo);
   app.fruitIds = duo; app.fslots = [{}, {}];
   app.fg = new FruitGame({ W: renderer.W, H: renderer.H, seed: (Math.random() * 2 ** 31) | 0, players: duo ? 2 : 1 });
   app.hands = {}; app.fps = null; app.rated = false; app.arm = {};
@@ -938,7 +943,11 @@ function fruitCountdownFrame(now, dt) {
   if (left !== app.lastCount && left > 0) { app.lastCount = left; big(String(left)); sfx.tick(); }
   ui.fruit = fruitUi();
   renderer.fruitScene(dt, now / 1000, app.fg, fruitView(now)); // thử vung tay trong lúc đếm ngược
-  if (now >= app.countEnd) { big('CHÉM!'); sfx.go(); setMode('fruit'); }
+  if (now >= app.countEnd) { // chốt số người lúc hết đếm ngược (người thứ 2 có 3 giây để vào khung)
+    const want = fruitDuoIds();
+    if (String(want) !== String(app.fruitIds)) newFruit(want);
+    big(app.fg.duo ? '2 NGƯỜI — CHÉM!' : 'CHÉM!'); sfx.go(); setMode('fruit');
+  }
 }
 function fruitFrame(now, dt) {
   const fg = app.fg, view = fruitView(now);
