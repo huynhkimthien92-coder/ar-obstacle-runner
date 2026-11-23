@@ -34,10 +34,20 @@ Hình trên TV luôn chậm hơn thực tế một chút. Nếu không bù, bạ
 3. Khi chơi, va chạm được xét **muộn hơn đúng bằng độ trễ đó**, cộng cửa sổ chấp nhận: né sớm tới 250 ms hoặc muộn tới 120 ms vẫn tính là qua.
 - Đo lại: Cài đặt → **⏱ Đo lại độ trễ ở lượt sau**, hoặc nút **⏱ Đo độ trễ** ở màn hiệu chỉnh. Có thể chỉnh tay bằng thanh trượt 0–600 ms.
 
+## Gợi ý động tác (nhìn / nghe từ xa)
+Khoảng 1,3 s trước khi chướng ngại vật tới, viền màn hình đổi màu, hiện mũi tên lớn và có âm báo riêng:
+| Màu viền | Biểu tượng | Âm báo | Làm gì |
+|---|---|---|---|
+| Xanh lơ | ⬆ NHẢY | "vút" lên cao | Nhảy (rào, hố lửa) |
+| Tím | ⬇ NGỒI | trượt xuống | Ngồi (laser) |
+| Vàng | ⬅ NÉ / NÉ ➡ | bíp bíp | Bước sang làn theo mũi tên |
+| Vàng nhạt | 🙌 GIƠ TAY | leng keng | Giơ tay lấy sao |
+Tắt âm báo trong Cài đặt nếu muốn chơi "khó".
+
 ## Điều khiển không cần chạm
 Người chơi đứng xa điện thoại nên mọi thao tác trong lúc chơi đều bằng cơ thể:
 - **Giơ 2 tay** (0,7 s) → bắt đầu. Hết lượt: **giơ 2 tay 1,5 s** → chơi lại.
-- **Ra khỏi khung hình** → game tự dừng. Quay lại → đếm ngược 3-2-1 rồi chơi tiếp.
+- **Ra khỏi khung hình quá 2 s** → game tự dừng (mất dấu chốc lát < 0,6 s thì game giữ nguyên, không tính). Quay lại → đếm ngược 3-2-1 rồi chơi tiếp.
 - Chỉ cần chạm điện thoại khi: chọn chế độ, tạm dừng / về menu.
 
 ## Màn hình phụ qua Wi-Fi — chi tiết kỹ thuật

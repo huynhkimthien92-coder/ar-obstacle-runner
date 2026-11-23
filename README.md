@@ -2,6 +2,8 @@
 
 Game vận động kiểu console cho phòng khách: **điện thoại = máy chơi + camera** (đặt nằm ngang dưới TV, như Kinect), **TV / máy chiếu = màn hình**. MediaPipe nhận diện cơ thể ngay trên điện thoại; người chơi thấy chính mình trên màn hình lớn, **bước** né tường, **nhảy** qua hố lửa / rào, **ngồi** tránh laser, **giơ tay** hái sao. Webgame/PWA chạy Android & iOS — không server game, không app store, 0 đ.
 
+**Chơi ngay trên điện thoại (không cần TV):** dựng máy dọc ngang tầm mắt, đứng gần ~1–1,5 m — game tự dùng khung nửa người (chỉ cần thấy đầu tới hông). Gợi ý động tác hiện thành viền màu + mũi tên lớn + âm báo nên không cần nhìn kỹ màn hình.
+
 **Đưa hình lên TV:** cáp HDMI · phản chiếu màn hình (Smart View / Chromecast / AirPlay) · hoặc màn hình phụ qua Wi-Fi (TV/laptop mở `display.html`, nhập mã 4 số). Chi tiết: **[docs/TV_SETUP.md](docs/TV_SETUP.md)**.
 
 ## Chạy nhanh

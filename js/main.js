@@ -16,7 +16,7 @@ const store = {
   set(k, v) { try { localStorage.setItem('aor:' + k, JSON.stringify(v)); } catch { /* chế độ riêng tư / sandbox */ } },
 };
 
-const DEFAULTS = { model: 'lite', facing: 'user', skeleton: true, sound: true, debug: false, sens: 1.0, tutorial: true, output: 'phone' };
+const DEFAULTS = { model: 'lite', facing: 'user', skeleton: true, sound: true, debug: false, sens: 1.0, tutorial: true, output: 'phone', bodyMode: 'auto', cueSound: true };
 const saved = store.get('settings', {});
 const settings = Object.assign({}, DEFAULTS, saved);
 settings.lag = Object.assign({ phone: CONFIG.LAG.phone, tv: CONFIG.LAG.tv, wifi: CONFIG.LAG.wifi }, saved.lag || {});
@@ -37,17 +37,19 @@ const app = {
   manual: { lane: 1, airborne: false, ducking: false, handsUp: false, oneHandUp: false, present: true },
   manualTimers: {}, lastT: 0, countEnd: 0, lastCount: 0, handsSince: 0, lostFor: 0, wasLost: false,
   poseSkip: false, poseTick: 0, wakeLock: null, lowFpsFor: 0, rated: false, tutorialMarked: false,
-  presentSince: 0, vdim: '', lag: null,
+  presentSince: 0, vdim: '', lag: null, lastCueId: 0, prevPresent: false, lostEvents: [],
 };
 // Nội dung chữ vẽ lên canvas cho TV (HUD, gợi ý, đếm ngược, bảng thông báo)
-const ui = { hud: null, hint: '', big: null, panel: null, corner: '', cornerColor: null };
+const ui = { hud: null, hint: '', big: null, panel: null, corner: '', cornerColor: null, cue: null };
 
 const tvOut = () => settings.output !== 'phone';
 const lagMs = () => settings.lag[settings.output] ?? 0;
+// Khung người: TV → toàn thân (đứng xa); màn hình điện thoại → nửa người (đứng gần để còn nhìn thấy màn hình)
+const bodyMode = () => (settings.bodyMode === 'auto' ? (tvOut() ? 'full' : 'near') : settings.bodyMode);
 
 // ---------------- UI helpers ----------------
 function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id)); }
-function setMode(m) { app.mode = m; if (m !== 'calib' && m !== 'lagtest' && m !== 'over') ui.panel = null; }
+function setMode(m) { app.mode = m; ui.cue = null; if (m !== 'calib' && m !== 'lagtest' && m !== 'over') ui.panel = null; }
 let hintText = '';
 function setHint(text) {
   ui.hint = text || '';
@@ -63,6 +65,7 @@ function big(text) {
 function saveSettings() { store.set('settings', settings); }
 function applySettings() {
   setMuted(!settings.sound);
+  motion.mode = bodyMode();
   $('debug').hidden = !settings.debug;
   const k = settings.sens;
   Object.assign(motion.cfg, {
@@ -78,7 +81,7 @@ function applyOutput() {
   const out = settings.output;
   document.body.classList.toggle('tvmode', out !== 'phone');
   document.body.classList.toggle('wifimode', out === 'wifi');
-  renderer.tvHud = out !== 'phone';
+  renderer.tvHud = true; // HUD/gợi ý luôn vẽ trên canvas, chữ to (cả TV lẫn điện thoại)
   // TV: luôn khung 16:9 cố định (khớp TV, camera 16:9 không bị cắt chân trên điện thoại 20:9)
   renderer.setFixed(out === 'phone' ? 0 : CONFIG.TV.width, CONFIG.TV.height);
   renderer.opaque = out === 'wifi' || app.input !== 'camera'; // wifi: canvas tự chứa cả hình camera để stream
@@ -164,13 +167,25 @@ function processPose(now) {
   app.raw = sm;
   app.pts = sm ? sm.map(app.mapper) : null;
   motion.update(app.pts, app.raw, renderer.W, renderer.H, now);
+  const pr = motion.state.present;
+  if (app.prevPresent && !pr) app.lostEvents.push(now);
+  app.prevPresent = pr;
+  app.lostEvents = app.lostEvents.filter(t => now - t < 10000);
 }
 
 const DIST_TEXT = {
-  none: ['Đứng vào giữa khung hình', 'Cách điện thoại ~2,5 m, thấy cả bàn chân'],
-  farther: ['Lùi ra xa hơn', 'Cần thấy cả bàn chân của bạn'],
-  closer: ['Tiến lại gần một chút', 'Bạn đang hơi xa camera'],
-  ok: ['Đứng yên…', 'Đang hiệu chỉnh tư thế đứng'],
+  full: {
+    none: ['Đứng vào giữa khung hình', 'Cách điện thoại ~2,5 m, thấy cả bàn chân'],
+    farther: ['Lùi ra xa hơn', 'Cần thấy cả bàn chân của bạn'],
+    closer: ['Tiến lại gần một chút', 'Bạn đang hơi xa camera'],
+    ok: ['Đứng yên…', 'Đang hiệu chỉnh tư thế đứng'],
+  },
+  near: {
+    none: ['Đứng trước camera', 'Cách ~1–1,5 m, thấy từ đầu tới hông'],
+    farther: ['Lùi ra một chút', 'Cần thấy cả đầu và hai vai'],
+    closer: ['Tiến lại gần hơn', 'Đứng cách điện thoại ~1–1,5 m'],
+    ok: ['Đứng yên…', 'Đang hiệu chỉnh tư thế đứng'],
+  },
 };
 
 function calibFrame(now) {
@@ -178,17 +193,19 @@ function calibFrame(now) {
   if (s.present && !app.presentSince) app.presentSince = now;
   if (!s.present) app.presentSince = 0;
   motion.calibGate = s.distance.hint === 'ok' || (app.presentSince && now - app.presentSince > 8000);
-  let [title, sub] = DIST_TEXT[s.present ? s.distance.hint : 'none'];
+  const DT = DIST_TEXT[motion.mode];
+  let [title, sub] = DT[s.present ? s.distance.hint : 'none'];
   let color = null;
   if (s.calibrated) {
     title = '🙌 Giơ 2 tay lên để bắt đầu'; color = '#7dffb0';
-    sub = s.distance.hint === 'ok' ? (tvOut() ? 'Nhìn lên màn hình lớn và chơi' : 'Hoặc bấm "Bắt đầu"') : DIST_TEXT[s.distance.hint]?.[0] || '';
+    sub = s.distance.hint === 'ok' ? (tvOut() ? 'Nhìn lên màn hình lớn và chơi' : 'Hoặc bấm "Bắt đầu"') : DT[s.distance.hint]?.[0] || '';
     if (s.handsUp) { app.handsSince ||= now; if (now - app.handsSince > 700) return beginPlay(); }
     else app.handsSince = 0;
   } else if (s.present && s.distance.hint !== 'ok' && motion.calibGate) title = 'Đứng yên…';
   const lines = [sub];
   if (s.distance.meters) lines.push(`Khoảng cách ước lượng: ~${s.distance.meters.toFixed(1)} m`);
   if (tvOut() && motion.videoPortrait) lines.push('📱↔ Xoay NGANG điện thoại để camera nhìn rộng hơn');
+  if (app.lostEvents.length >= 3) lines.push('Hay mất dấu: bật thêm đèn, tránh đứng ngược sáng, mặc áo khác màu tường');
   $('calib-title').textContent = title; $('calib-sub').textContent = sub;
   $('calib-dist').textContent = lines.slice(1).join(' · ');
   $('btn-calib-start').disabled = !s.calibrated;
@@ -277,7 +294,7 @@ function playFrame(now, dt) {
   const g = app.game, p = player();
   if (app.input === 'camera') {
     app.lostFor = p.present ? 0 : app.lostFor + dt;
-    if (app.lostFor > 1.0) {
+    if (app.lostFor > CONFIG.LOST_PAUSE_SEC) {
       app.wasLost = true; setHint('');
       ui.panel = { title: '👀 Không thấy bạn', lines: ['Quay lại khung hình để chơi tiếp'] };
       $('hint').textContent = '👀 Không thấy bạn — quay lại khung hình'; $('hint').classList.add('show');
@@ -288,6 +305,8 @@ function playFrame(now, dt) {
   }
   g.update(dt, now, p);
   for (const ev of g.drain()) onGameEvent(ev);
+  ui.cue = g.nextCue(p.lane);
+  if (ui.cue && ui.cue.ob.id !== app.lastCueId) { app.lastCueId = ui.cue.ob.id; if (settings.cueSound) sfx['cue_' + ui.cue.action]?.(); }
   setHint(g.hint || '');
   renderer.frame(dt, now / 1000, g, p, viewOpts());
   updateHUD();
@@ -480,6 +499,7 @@ $('btn-settings').onclick = () => {
   $('set-model').value = settings.model; $('set-sens').value = settings.sens;
   $('set-skel').checked = settings.skeleton; $('set-sound').checked = settings.sound;
   $('set-debug').checked = settings.debug; $('set-tut').checked = settings.tutorial;
+  $('set-body').value = settings.bodyMode; $('set-cue').checked = settings.cueSound;
   $('set-lag').value = lagMs(); $('set-lag-val').textContent = `${lagMs()} ms (${{ phone: 'điện thoại', tv: 'HDMI / phản chiếu', wifi: 'Wi-Fi' }[settings.output]})`;
   $('dlg-settings').showModal();
 };
@@ -489,6 +509,7 @@ $('dlg-settings').addEventListener('close', () => {
   Object.assign(settings, {
     model: $('set-model').value, sens: +$('set-sens').value, skeleton: $('set-skel').checked,
     sound: $('set-sound').checked, debug: $('set-debug').checked, tutorial: $('set-tut').checked,
+    bodyMode: $('set-body').value, cueSound: $('set-cue').checked,
   });
   const v = +$('set-lag').value;
   if (v !== lagMs()) { settings.lag[settings.output] = v; settings.lagMeasured[settings.output] = true; }
@@ -539,7 +560,7 @@ function debugText() {
     `${app.pose?.model ?? '-'} / ${app.pose?.delegate ?? '-'} ${bench.info.video ?? ''}`,
     `out ${settings.output} lag ${lagMs()} ms${link.rtt ? ' rtt ' + Math.round(link.rtt) : ''}`,
     `lane ${s.lane} x=${s.laneX.toFixed(2)} rise ${s.rise.toFixed(2)} drop ${s.drop.toFixed(2)}`,
-    `${s.airborne ? 'AIR ' : ''}${s.ducking ? 'DUCK ' : ''}${s.handsUp ? 'HANDS ' : ''}dist ${s.distance.hint}`,
+    `${s.airborne ? 'AIR ' : ''}${s.ducking ? 'DUCK ' : ''}${s.handsUp ? 'HANDS ' : ''}${s.coasting ? 'COAST ' : ''}${motion.mode} dist ${s.distance.hint} hips ${s.hipsSeen ? 'y' : 'n'} lost10s ${app.lostEvents.length}`,
   ].join('\n');
 }
 

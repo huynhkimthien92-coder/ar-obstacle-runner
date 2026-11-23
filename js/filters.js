@@ -38,7 +38,7 @@ export class PoseSmoother {
   }
   apply(landmarks, tMs) {
     if (!landmarks) return null;
-    if (tMs - this.lastSeen > 500) this.reset(); // mất người >0.5s → reset để không "kéo" từ vị trí cũ
+    if (tMs - this.lastSeen > 800) this.reset(); // mất người >0.8s → reset để không "kéo" từ vị trí cũ
     this.lastSeen = tMs;
     return landmarks.map((p, i) => ({
       x: this.fx[i].filter(p.x, tMs), y: this.fy[i].filter(p.y, tMs), z: p.z, v: p.v,

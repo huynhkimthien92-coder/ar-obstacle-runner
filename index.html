@@ -129,9 +129,10 @@
     <ol>
       <li><b>Nối điện thoại với TV/máy chiếu</b> (cáp HDMI, phản chiếu màn hình, hoặc trang màn hình phụ qua Wi-Fi).</li>
       <li><b>Đặt điện thoại nằm ngang</b> dưới giữa TV, camera trước hướng về chỗ chơi, cao ngang hông–ngực.</li>
-      <li><b>Lùi ra ~2,5–3 m</b> sao cho thấy cả bàn chân. Chỗ chơi rộng ~3 m, nền không trơn.</li>
+      <li><b>Lùi ra ~2,5–3 m</b> sao cho thấy cả bàn chân. Chỗ chơi rộng ~3 m, nền không trơn. <i>Chơi trên màn hình điện thoại:</i> dựng máy dọc ngang tầm mắt, đứng gần ~1–1,5 m, chỉ cần thấy từ đầu tới hông.</li>
       <li><b>Đứng yên</b> để game hiệu chỉnh, rồi <b>giơ 2 tay</b> lên để bắt đầu. Lần đầu trên TV sẽ có bước <b>đo độ trễ</b> (nhảy theo nhịp 6 lần).</li>
     </ol>
+    <p class="tiny">Khi chướng ngại vật sắp tới: viền màn hình đổi màu + mũi tên lớn + âm báo — <b style="color:#00e5ff">xanh = NHẢY</b>, <b style="color:#c77dff">tím = NGỒI</b>, <b style="color:#ffd23f">vàng = NÉ</b> (theo mũi tên), <b style="color:#fff27a">🙌 = GIƠ TAY</b>.</p>
     <table>
       <tr><td>🧱 Tường</td><td>Bước sang trái/phải (màn hình chia 3 làn)</td></tr>
       <tr><td>🔥 Hố lửa</td><td>Nhảy qua, hoặc né sang làn khác</td></tr>
@@ -155,6 +156,14 @@
       <input id="set-sens" type="range" min="0.6" max="1.6" step="0.1">
       <small>Trái = nhạy hơn · Phải = phải nhảy/ngồi rõ hơn</small>
     </label>
+    <label>Khung người
+      <select id="set-body">
+        <option value="auto">Tự động (TV: toàn thân · điện thoại: nửa người)</option>
+        <option value="full">Toàn thân — đứng xa ~2,5 m</option>
+        <option value="near">Nửa người — đứng gần ~1–1,5 m</option>
+      </select>
+    </label>
+    <label class="check"><input id="set-cue" type="checkbox"> Âm báo động tác (nhảy / ngồi / né / giơ tay)</label>
     <label class="check"><input id="set-skel" type="checkbox"> Hiện khung xương</label>
     <label class="check"><input id="set-sound" type="checkbox"> Âm thanh</label>
     <label class="check"><input id="set-tut" type="checkbox"> Chạy phần hướng dẫn đầu game</label>

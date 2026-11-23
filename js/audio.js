@@ -49,6 +49,11 @@ export const sfx = {
   go: () => tone(1320, 0.25, { type: 'sine', vol: 0.14 }),
   over: () => [523, 392, 330, 262].forEach((f, i) => tone(f, 0.22, { type: 'triangle', vol: 0.12, delay: i * 0.18 })),
   ok: () => tone(1046, 0.12, { type: 'sine', vol: 0.1 }),
+  // Âm báo động tác — mỗi động tác một kiểu, nghe là biết không cần nhìn màn hình
+  cue_jump: () => tone(500, 0.18, { type: 'sine', slide: 700, vol: 0.16 }),           // vút lên
+  cue_duck: () => tone(900, 0.2, { type: 'sine', slide: -600, vol: 0.16 }),           // trượt xuống
+  cue_move: () => { tone(740, 0.07, { type: 'square', vol: 0.09 }); tone(740, 0.07, { type: 'square', vol: 0.09, delay: 0.11 }); }, // bíp bíp
+  cue_hands: () => [1047, 1319, 1568].forEach((f, i) => tone(f, 0.08, { type: 'triangle', vol: 0.1, delay: i * 0.05 })),
 };
 
 export function buzz(ms) { try { navigator.vibrate?.(ms); } catch { /* iOS không hỗ trợ */ } }

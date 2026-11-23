@@ -88,7 +88,7 @@ export class Renderer {
   /** Chữ & HUD vẽ thẳng lên canvas — để TV (qua stream) thấy đủ, và đọc được từ 3 m. */
   overlay(ui, tMs) {
     const { ctx, W, H } = this;
-    const u = Math.min(W, H) / 720;
+    const u = Math.max(0.78, Math.min(W, H) / 720); // điện thoại dọc vẫn giữ chữ to, đọc được từ 1–1,5 m
     const text = (str, x, y, size, color = '#fff', align = 'center', weight = 800) => {
       ctx.font = `${weight} ${Math.round(size * u)}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
       ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
@@ -103,7 +103,8 @@ export class Renderer {
       text('♥'.repeat(Math.max(0, h.lives)) + '♡'.repeat(Math.max(0, h.maxLives - h.lives)), 28 * u, 46 * u, 46, '#ff4d6d', 'left');
       if (h.combo > 1) text(`x${h.combo}`, 28 * u, 100 * u, 40, '#ffd23f', 'left');
     }
-    if (ui.hint) text(ui.hint, W / 2, H * 0.25, 54);
+    if (ui.cue) this.cue(ui.cue, tMs, u, text);
+    else if (ui.hint) text(ui.hint, W / 2, H * 0.25, 54);
     if (ui.big && tMs - ui.big.at < 950) {
       const k = (tMs - ui.big.at) / 950;
       ctx.globalAlpha = k < 0.15 ? k / 0.15 : Math.max(0, 1 - (k - 0.15) / 0.85);
@@ -125,6 +126,25 @@ export class Renderer {
       }
     }
     if (ui.corner) text(ui.corner, W - 18 * u, H - 22 * u, 20, ui.cornerColor || '#9fffcf', 'right', 600);
+    ctx.restore();
+  }
+
+  /** Gợi ý nhìn được từ xa: viền màn hình đổi màu theo động tác + biểu tượng thật to, đậm dần khi vật tới gần. */
+  cue(cue, tMs, u, text) {
+    const { ctx, W, H } = this;
+    const C = { jump: ['#00e5ff', '⬆', 'NHẢY'], duck: ['#c77dff', '⬇', 'NGỒI'], move: ['#ffd23f', cue.dir < 0 ? '⬅' : '➡', 'NÉ'], hands: ['#fff27a', '🙌', 'GIƠ TAY'] }[cue.action];
+    if (!C) return;
+    const k = Math.max(0, Math.min(1, 1 - cue.t / 1.3));
+    const pulse = 0.75 + 0.25 * Math.sin(tMs / 70);
+    ctx.save();
+    ctx.globalAlpha = (0.25 + 0.6 * k) * pulse;
+    ctx.strokeStyle = C[0]; ctx.lineWidth = (10 + 26 * k) * u;
+    ctx.strokeRect(0, 0, W, H);
+    ctx.globalAlpha = 0.55 + 0.45 * k;
+    const size = Math.min(W, H) * (0.16 + 0.08 * k) / u;
+    const y = H * 0.22;
+    if (cue.action === 'move') text(`${cue.dir < 0 ? C[1] + ' ' : ''}${C[2]}${cue.dir > 0 ? ' ' + C[1] : ''}`, W / 2, y, size * 0.8, C[0]);
+    else { text(C[1], W / 2, y, size, C[0]); text(C[2], W / 2, y + size * u * 0.85, size * 0.42, C[0]); }
     ctx.restore();
   }
 

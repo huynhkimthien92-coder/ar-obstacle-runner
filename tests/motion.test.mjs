@@ -91,3 +91,48 @@ test('trạng thái "nhảy" kéo dài bất thường → tự hiệu chỉnh l
   for (let i = 0; i < 60; i++) { const [p, r] = body({ hipY: 470 }); m.update(p, r, W, H, (t += 33)); }
   assert.equal(m.state.airborne, false);
 });
+
+/** Người đứng gần: chỉ thấy đầu + vai (hông ở ngoài khung). */
+function upper({ cx = 200, shY = 500, shW = 120 } = {}) {
+  const pts = Array.from({ length: 33 }, () => ({ x: cx, y: H + 200, v: 0.05 }));
+  const set = (i, x, y, v = 0.99) => { pts[i] = { x, y, v }; };
+  set(0, cx, shY - shW * 0.9);
+  set(11, cx + shW / 2, shY); set(12, cx - shW / 2, shY);
+  set(15, cx + 70, shY + 160, 0.6); set(16, cx - 70, shY + 160, 0.6);
+  const raw = pts.map(p => ({ x: p.x / W, y: p.y / H, v: p.v }));
+  return [pts, raw];
+}
+
+test('đứng gần, không thấy hông: vẫn hiệu chỉnh, nhảy và ngồi được theo vai', () => {
+  const m = new MotionTracker(); m.mode = 'near';
+  m.beginCalibration();
+  let t = 0;
+  for (let i = 0; i < 40; i++) { const [p, r] = upper(); m.update(p, r, W, H, (t += 33)); }
+  assert.equal(m.state.calibrated, true);
+  assert.equal(m.state.hipsSeen, false);
+  assert.equal(m.state.distance.hint, 'ok'); // vai rộng 120/400 = 0.3 khung
+  let [p, r] = upper({ shY: 500 - 0.25 * 168 }); m.update(p, r, W, H, (t += 33));
+  assert.equal(m.state.airborne, true, 'vai nâng 25% thân ước lượng → nhảy');
+  [p, r] = upper(); m.update(p, r, W, H, (t += 33));
+  [p, r] = upper({ shY: 500 + 0.35 * 168 }); m.update(p, r, W, H, (t += 33));
+  assert.equal(m.state.ducking, true, 'vai hạ 35% → ngồi');
+});
+
+test('đứng gần: quá gần / quá xa được nhắc đúng', () => {
+  const m = new MotionTracker(); m.mode = 'near';
+  let [p, r] = upper({ shW: 240 }); m.update(p, r, W, H, 0);
+  assert.equal(m.state.distance.hint, 'farther');
+  [p, r] = upper({ shW: 40 }); m.update(p, r, W, H, 33);
+  assert.equal(m.state.distance.hint, 'closer');
+});
+
+test('mất dấu < 0.6s: giữ nguyên trạng thái; lâu hơn mới tính mất người', () => {
+  let [m, t] = calibrated();
+  let [p, r] = body({ hipY: 520 - 160 * 0.25 }); m.update(p, r, W, H, (t += 33));
+  assert.equal(m.state.airborne, true);
+  m.update(null, null, W, H, (t += 300));
+  assert.equal(m.state.present, true); assert.equal(m.state.coasting, true);
+  assert.equal(m.state.airborne, true, 'đang nhảy mà mờ hình → vẫn tính đang nhảy');
+  m.update(null, null, W, H, (t += 500));
+  assert.equal(m.state.present, false);
+});

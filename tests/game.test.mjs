@@ -120,3 +120,13 @@ test('bù độ trễ TV 300ms: nhảy lúc NHÌN THẤY rào chạm vạch (tr�
     assert.equal(g.hits, expectHit, `lag ${lag}`);
   }
 });
+
+test('gợi ý động tác: rào → nhảy, laser → ngồi, tường cùng làn → né về phía làn trống', () => {
+  const mk = obs => { const g = new Game({ seed: 1, tutorial: false }); g.spawnPos = 1e9; g.obstacles = obs.map((o, i) => ({ id: i + 1, done: false, ...o, z: o.pos })); return g; };
+  assert.equal(mk([{ type: T.HURDLE, lane: -1, pos: 5 }]).nextCue(1).action, 'jump');
+  assert.equal(mk([{ type: T.BAR, lane: -1, pos: 5 }]).nextCue(1).action, 'duck');
+  const c = mk([{ type: T.WALL, lane: 1, pos: 5 }, { type: T.WALL, lane: 0, pos: 5 }]).nextCue(1);
+  assert.equal(c.action, 'move'); assert.equal(c.dir, 1, 'làn trái bị chặn → né sang phải');
+  assert.equal(mk([{ type: T.WALL, lane: 2, pos: 5 }]).nextCue(1), null, 'tường làn khác → không cần làm gì');
+  assert.equal(mk([{ type: T.HURDLE, lane: -1, pos: 40 }]).nextCue(1), null, 'còn xa → chưa nhắc');
+});

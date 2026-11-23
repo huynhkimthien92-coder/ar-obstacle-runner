@@ -30,7 +30,7 @@ export class PoseEngine {
         this.landmarker = await PoseLandmarker.createFromOptions(fileset, {
           baseOptions: { modelAssetPath: CONFIG.MODELS[model], delegate },
           runningMode: 'VIDEO', numPoses: 1,
-          minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+          minPoseDetectionConfidence: CONFIG.POSE.detect, minPosePresenceConfidence: CONFIG.POSE.presence, minTrackingConfidence: CONFIG.POSE.track,
           outputSegmentationMasks: false,
         });
         this.delegate = delegate; this.model = model;

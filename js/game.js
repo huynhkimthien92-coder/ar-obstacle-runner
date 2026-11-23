@@ -67,6 +67,39 @@ export class Game {
     if (this.hint && tMs > this.hintUntil) this.hint = null;
   }
 
+  /**
+   * Động tác cần làm kế tiếp cho người chơi đang đứng ở `lane` (để hiện mũi tên lớn + phát âm báo).
+   * Trả { action: 'jump'|'duck'|'move'|'hands', dir: -1|1 (khi move), t: giây còn lại, ob } hoặc null.
+   */
+  nextCue(lane, horizonSec = 1.3) {
+    const plane = -this.speed * (this.cfg.displayLagMs || 0) / 1000;
+    const win = this.speed * horizonSec;
+    let best = null;
+    for (const o of this.obstacles) {
+      if (o.done || o.taken) continue;
+      const dz = o.z - plane;
+      if (dz < -1 || dz > win) continue;
+      let action = null;
+      if (o.type === T.HURDLE || (o.type === T.FIRE && (o.lane === -1 || o.lane === lane))) action = 'jump';
+      else if (o.type === T.BAR) action = 'duck';
+      else if (o.type === T.WALL && o.lane === lane) action = 'move';
+      else if (o.type === T.STAR && o.lane === lane) action = 'hands';
+      if (action && (!best || dz < best.dz)) best = { action, dz, ob: o };
+    }
+    if (!best) return null;
+    best.t = Math.max(0, best.dz / this.speed);
+    if (best.action === 'move') {
+      const blocked = new Set(this.obstacles
+        .filter(o => !o.done && (o.type === T.WALL || o.type === T.FIRE) && Math.abs(o.z - best.ob.z) < 3)
+        .flatMap(o => (o.lane === -1 ? [0, 1, 2] : [o.lane])));
+      const free = [lane - 1, lane + 1].filter(l => l >= 0 && l <= 2 && !blocked.has(l));
+      const far = [0, 1, 2].filter(l => !blocked.has(l)).sort((a, b) => Math.abs(a - lane) - Math.abs(b - lane))[0];
+      const target = free[0] ?? far ?? (lane === 0 ? 1 : lane - 1);
+      best.dir = target < lane ? -1 : 1;
+    }
+    return best;
+  }
+
   _spawnChunk(playerLane) {
     let ch;
     if (this.tutIdx < TUTORIAL.length) ch = TUTORIAL[this.tutIdx++];

@@ -15,7 +15,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: radial-gradi
 
 .screen { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: calc(16px + var(--safe-t)) 16px calc(16px + var(--safe-b)); z-index: 10; }
 .screen.active { display: flex; }
-.screen.overlay { pointer-events: none; flex-direction: column; justify-content: space-between; }
+.screen.overlay { pointer-events: none; flex-direction: column; justify-content: flex-end; }
 .screen.overlay > * { pointer-events: auto; }
 
 .card { width: min(440px, 100%); background: var(--card); border: 1px solid rgba(0, 229, 255, .25); border-radius: 22px; padding: 24px 20px;
@@ -88,12 +88,12 @@ dialog input[type=checkbox] { width: 22px; height: 22px; }
 body.tvmode { background: #000; }
 body.tvmode #cam { inset: auto; top: 50%; left: 50%; width: min(100vw, 177.78vh); height: min(56.25vw, 100vh); transform: translate(-50%, -50%); }
 body.tvmode #cam.mirror { transform: translate(-50%, -50%) scaleX(-1); }
-body.tvmode #hud, body.tvmode #hint, body.tvmode #big, body.tvmode #scr-calib .banner { display: none !important; }
+/* HUD, gợi ý, đếm ngược, hướng dẫn hiệu chỉnh vẽ trên canvas (chữ to) → ẩn bản DOM, chỉ giữ nút tạm dừng */
+.hud-left, .hud-center, #hint, #big, #scr-calib .banner { display: none !important; }
 body.tvmode #scr-over { align-items: flex-end; }
 body.tvmode #scr-over .card { padding: 10px 14px; display: flex; gap: 8px; width: min(520px, 100%); }
 body.tvmode #scr-over .card > :not(.tv-keep) { display: none; }
 body.tvmode #scr-over .card > .tv-keep { flex: 1; margin: 0; }
-body.tvmode .screen.overlay { justify-content: flex-end; }
 dialog h3 { margin: 4px 0 4px; font-size: 16px; }
 .opt { border: 1px solid rgba(255,255,255,.12); border-radius: 14px; padding: 10px 12px; margin: 10px 0; }
 .url { color: #ffd23f; word-break: break-all; }

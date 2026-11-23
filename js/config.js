@@ -14,7 +14,10 @@ export const CONFIG = {
     full: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
   },
 
-  CAMERA: { width: 640, height: 480, tvWidth: 960, tvHeight: 540, fps: 30 },
+  CAMERA: { width: 960, height: 540, tvWidth: 960, tvHeight: 540, fps: 30 },
+  // Ngưỡng tin cậy MediaPipe (mặc định của Google là 0.5) — hạ xuống để bám người ở xa / thiếu sáng tốt hơn
+  POSE: { detect: 0.4, presence: 0.4, track: 0.4 },
+  LOST_PAUSE_SEC: 2.0, // mất người liên tục bao lâu thì tạm dừng game
 
   // Ngưỡng nhận diện động tác (tỉ lệ theo chiều dài thân = vai→hông lúc hiệu chỉnh)
   MOTION: {
@@ -24,7 +27,11 @@ export const CONFIG = {
     adaptRate: 0.02,                   // tốc độ baseline bám theo trôi tư thế khi đứng yên
     maxAirborneMs: 1200,               // nhảy >1.2s là bất khả thi → coi là trôi baseline, hiệu chỉnh lại
     maxDuckMs: 3500,
-    visMin: 0.5,
+    visMin: 0.5,                       // hông / mắt cá
+    shoulderVis: 0.35,                 // chỉ BẮT BUỘC thấy 2 vai → khó mất dấu hơn
+    torsoPerShoulder: 1.4,             // hông khuất: thân ≈ 1.4 × bề rộng vai
+    coastMs: 600,                      // mất dấu < 0.6s → giữ nguyên trạng thái (không giật / không tính mất người)
+    nearShoulderMin: 0.15, nearShoulderMax: 0.5, // chế độ đứng gần: bề rộng vai / bề ngang khung
     calibSamples: 8, calibMs: 900,
   },
 
