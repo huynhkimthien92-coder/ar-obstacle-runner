@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AR Obstacle Runner — Màn hình TV</title>
+  <meta name="theme-color" content="#000000">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; color: #f2f5ff; overflow: hidden; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    video { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+    #pair { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2vh;
+      background: radial-gradient(ellipse at 50% 30%, #1b2366, #0a0e28 70%); text-align: center; padding: 4vh; box-sizing: border-box; }
+    #pair[hidden] { display: none; }
+    h1 { margin: 0; font-size: 5.5vh; } h1 span { color: #ff5a3c; }
+    .label { font-size: 3vh; opacity: .8; margin-top: 2vh; }
+    #code { font-size: 22vh; font-weight: 900; letter-spacing: 3vh; line-height: 1; color: #00e5ff; text-shadow: 0 0 6vh rgba(0,229,255,.5); padding-left: 3vh; }
+    ol { text-align: left; font-size: 3vh; line-height: 1.6; margin: 2vh 0 0; }
+    .url { color: #ffd23f; font-weight: 700; word-break: break-all; }
+    #status { position: fixed; left: 2vh; bottom: 2vh; font-size: 2vh; opacity: .75; }
+    #tap { position: fixed; bottom: 3vh; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.75); padding: 1.5vh 3vh; border-radius: 2vh; font-size: 2.6vh; }
+    #tap[hidden] { display: none; }
+    #fs { position: fixed; right: 2vh; bottom: 2vh; font-size: 2.2vh; padding: 1.2vh 2vh; border-radius: 1.5vh; border: 1px solid rgba(255,255,255,.3); background: rgba(255,255,255,.08); color: #fff; }
+    body.playing { cursor: none; } body.playing #fs, body.playing #status { opacity: 0; transition: opacity 1s 3s; }
+  </style>
+</head>
+<body>
+  <video id="v" autoplay playsinline></video>
+  <div id="pair">
+    <h1>AR <span>Obstacle</span> Runner · Màn hình</h1>
+    <div class="label">Mã kết nối</div>
+    <div id="code">····</div>
+    <ol>
+      <li>Trên điện thoại mở <span class="url" id="game-url"></span></li>
+      <li>Chọn <b>📺 Chơi trên TV / máy chiếu</b> → <b>Màn hình phụ qua Wi-Fi</b></li>
+      <li>Nhập mã ở trên → điện thoại nằm ngang, đặt dưới màn hình, camera hướng về người chơi</li>
+    </ol>
+    <div class="label" style="font-size:2.2vh">Điện thoại và thiết bị này cần cùng một mạng Wi-Fi.</div>
+  </div>
+  <div id="tap" hidden>🔊 Bấm OK / nhấp chuột để bật âm thanh</div>
+  <button id="fs">⛶ Toàn màn hình</button>
+  <div id="status">Đang khởi động…</div>
+  <script type="module" src="js/display.js"></script>
+</body>
+</html>
