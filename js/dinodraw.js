@@ -2,80 +2,9 @@
 // Toạ độ cục bộ: gốc (0,0) ở giữa 2 chân, trục y hướng LÊN là âm; w, h = khung khủng long (dinoBox).
 // Mỗi bộ phận (chân, tay, đầu, hàm, đuôi, cánh) cử động riêng theo tư thế do dinoPose() tính cho từng giai đoạn / đòn.
 
-const TAU = Math.PI * 2;
-export function shade(hex, k) { // k > 0 sáng hơn, k < 0 tối hơn
-  const n = parseInt(hex.slice(1), 16), f = v => Math.max(0, Math.min(255, Math.round(k > 0 ? v + (255 - v) * k : v * (1 + k))));
-  return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
-}
-const ell = (c, x, y, rx, ry, rot = 0) => { c.beginPath(); c.ellipse(x, y, Math.abs(rx), Math.abs(ry), rot, 0, TAU); };
-function bodyGrad(c, x, y, r, col) {
-  const g = c.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r * 1.15);
-  g.addColorStop(0, shade(col, 0.28)); g.addColorStop(0.6, col); g.addColorStop(1, shade(col, -0.45));
-  return g;
-}
-function teethRow(c, x0, x1, y, n, len, down = true) {
-  c.fillStyle = '#fff8e6'; c.strokeStyle = 'rgba(80,60,40,0.5)'; c.lineWidth = Math.max(1, len * 0.08);
-  for (let i = 0; i < n; i++) {
-    const k = (i + 0.5) / n, x = x0 + (x1 - x0) * k, half = ((x1 - x0) / n) * 0.42, l = len * (0.75 + 0.35 * Math.sin(k * Math.PI));
-    c.beginPath(); c.moveTo(x - half, y); c.lineTo(x, y + (down ? l : -l)); c.lineTo(x + half, y); c.closePath(); c.fill(); c.stroke();
-  }
-}
-function eye(c, x, y, r, glow, look = 0) {
-  c.save();
-  if (glow > 0) { c.shadowColor = '#ff2a00'; c.shadowBlur = r * 3 * glow; }
-  ell(c, x, y, r, r * 0.8); c.fillStyle = glow > 0.4 ? '#ff4a1c' : '#ffd23f'; c.fill();
-  c.shadowBlur = 0;
-  ell(c, x + look * r * 0.25, y, r * 0.22, r * 0.72); c.fillStyle = '#140800'; c.fill();   // đồng tử dọc
-  ell(c, x - r * 0.35, y - r * 0.3, r * 0.18, r * 0.14); c.fillStyle = 'rgba(255,255,255,0.85)'; c.fill();
-  c.restore();
-}
-function brow(c, x, y, w, side, col) { // gờ mày dữ tợn: xếch xuống phía trong
-  c.beginPath(); c.moveTo(x - side * w * 0.6, y - w * 0.25); c.quadraticCurveTo(x, y - w * 0.55, x + side * w * 0.7, y + w * 0.12);
-  c.lineTo(x + side * w * 0.6, y + w * 0.3); c.quadraticCurveTo(x, y - w * 0.1, x - side * w * 0.6, y + w * 0.05); c.closePath();
-  c.fillStyle = shade(col, -0.35); c.fill();
-}
-function claws(c, x, y, w, n, col = '#f4ecd8') {
-  c.fillStyle = col;
-  for (let i = 0; i < n; i++) {
-    const cx = x + (i - (n - 1) / 2) * w * 0.38;
-    c.beginPath(); c.moveTo(cx - w * 0.12, y); c.quadraticCurveTo(cx, y + w * 0.5, cx + w * 0.02, y + w * 0.45); c.lineTo(cx + w * 0.12, y); c.closePath(); c.fill();
-  }
-}
-function mouth(c, cx, yTop, wid, open, col, teethN, tooth) {
-  // hàm trên (răng chĩa xuống) + khoang miệng + hàm dưới hạ xuống theo `open`
-  const drop = open;
-  if (drop > 1) {
-    c.beginPath(); c.moveTo(cx - wid / 2, yTop); c.quadraticCurveTo(cx, yTop + drop * 1.5, cx + wid / 2, yTop);
-    c.quadraticCurveTo(cx, yTop + drop * 0.2, cx - wid / 2, yTop); c.fillStyle = '#4a0d0d'; c.fill();
-    ell(c, cx, yTop + drop * 0.65, wid * 0.28, drop * 0.3); c.fillStyle = '#b8344a'; c.fill(); // lưỡi
-    teethRow(c, cx - wid * 0.44, cx + wid * 0.44, yTop + drop * 1.05, teethN - 1, tooth * 0.8, false);
-  }
-  teethRow(c, cx - wid * 0.46, cx + wid * 0.46, yTop, teethN, tooth, true);
-  // hàm dưới
-  c.beginPath(); c.moveTo(cx - wid * 0.5, yTop + drop * 0.9);
-  c.quadraticCurveTo(cx, yTop + drop * 1.25 + wid * 0.32, cx + wid * 0.5, yTop + drop * 0.9);
-  c.quadraticCurveTo(cx, yTop + drop * 1.1 + wid * 0.08, cx - wid * 0.5, yTop + drop * 0.9);
-  c.fillStyle = shade(col, -0.15); c.fill();
-}
-
-// ---------------- Khớp nối: mỗi bộ phận cử động riêng ----------------
-// A (tư thế) do dinoPose() tính: legL/legR (nhấc chân 0..1), armL/armR (giơ tay, rad), tail (−1..1 quất đuôi),
-// headX/headY (dời đầu, theo w/h), headS (đầu to lên = lao về phía người xem), headRot, jaw 0..1, bob (nhún thân),
-// wing (vị trí vỗ cánh −1..1), wingFold (0 xoè → 1 cụp), squint (nheo mắt khi choáng / đau), glow, look.
-const P0 = { legL: 0, legR: 0, armL: 0, armR: 0, tail: 0, headX: 0, headY: 0, headS: 1, headRot: 0, jaw: 0.15, bob: 0, wing: 0, wingFold: 0, squint: 0, glow: 0, look: 0 };
-/** Biến đổi quanh điểm neo (ax, ay): dời (dx, dy) → xoay rot → thu phóng s. */
-function part(c, ax, ay, dx, dy, s, rot, fn) {
-  c.save(); c.translate(ax + dx, ay + dy); if (rot) c.rotate(rot); if (s !== 1) c.scale(s, s); c.translate(-ax, -ay); fn(); c.restore();
-}
-function eyes(c, xs, y, r, A, col, browW) {
-  for (const sd of [-1, 1]) {
-    const x = sd * xs;
-    c.save(); c.translate(x, y); c.scale(1, 1 - 0.75 * A.squint); c.translate(-x, -y);
-    eye(c, x, y, r, A.glow, A.look);
-    c.restore();
-    if (browW) brow(c, x, y - r * 1.5 - A.glow * r * 0.3, browW, -sd, col);
-  }
-}
+import { TAU, shade, ell, bodyGrad, teethRow, eye, brow, claws, mouth, P0, part, eyes } from './dinokit.js';
+export { shade } from './dinokit.js';
+import { SPECIES_DRAW, PAL } from './dinospecies.js';
 
 // ---------------- T-REX ----------------
 function trex(c, w, h, A) {
@@ -127,10 +56,12 @@ function trex(c, w, h, A) {
 
 // ---------------- RAPTOR ----------------
 function raptor(c, w, h, A) {
-  const col = '#e0782b', dark = '#6b2f12';
+  // bảng màu đổi được → dùng lại cho Compsognathus (mặt nạ, đuôi khoang) và Pachycephalosaurus (đầu vòm)
+  const P = A.pal || {}, col = P.col || '#e0782b', dark = P.dark || '#6b2f12';
   const tx = -w * (0.75 + 0.1 * A.tail), ty = -h * (0.62 + 0.12 * A.tail);
   c.beginPath(); c.moveTo(-w * 0.1, -h * 0.5); c.quadraticCurveTo(-w * 0.5, -h * (0.55 + A.tail * 0.06), tx, ty);
   c.quadraticCurveTo(-w * 0.5, -h * 0.48, -w * 0.08, -h * 0.42); c.closePath(); c.fillStyle = shade(col, -0.3); c.fill();
+  if (P.stripes) { c.strokeStyle = P.stripes; c.lineWidth = w * 0.035; for (let i = 1; i <= 4; i++) { const k = i / 5; c.beginPath(); c.moveTo(-w * (0.1 + 0.6 * k), -h * (0.5 + 0.1 * k + A.tail * 0.06 * k) - h * 0.04); c.lineTo(-w * (0.1 + 0.6 * k) - w * 0.02, -h * (0.5 + 0.1 * k + A.tail * 0.06 * k) + h * 0.05); c.stroke(); } }
   for (const [sd, lift] of [[-1, A.legL], [1, A.legR]]) {
     part(c, sd * w * 0.16, -h * 0.45, 0, -lift * h * 0.1, 1, -sd * lift * 0.2, () => {
       ell(c, sd * w * 0.16, -h * 0.4, w * 0.11, h * 0.12); c.fillStyle = bodyGrad(c, sd * w * 0.16, -h * 0.4, w * 0.11, col); c.fill();
@@ -144,12 +75,12 @@ function raptor(c, w, h, A) {
     ell(c, 0, -h * 0.52, w * 0.22, h * 0.17); c.fillStyle = bodyGrad(c, 0, -h * 0.52, w * 0.22, col); c.fill();
     c.strokeStyle = dark; c.lineWidth = w * 0.03;
     for (const sd of [-1, 1]) for (let i = 0; i < 4; i++) { c.beginPath(); c.moveTo(sd * w * (0.12 + i * 0.025), -h * (0.62 - i * 0.04)); c.lineTo(sd * w * (0.2 + i * 0.02), -h * (0.56 - i * 0.04)); c.stroke(); }
-    ell(c, 0, -h * 0.5, w * 0.1, h * 0.12); c.fillStyle = '#f2d3a6'; c.fill();
+    ell(c, 0, -h * 0.5, w * 0.1, h * 0.12); c.fillStyle = P.belly || '#f2d3a6'; c.fill();
     for (const [sd, ar] of [[-1, A.armL], [1, A.armR]]) { // tay có lông + móng: giương ra, cào xuống
       part(c, sd * w * 0.14, -h * 0.6, 0, 0, 1, -sd * ar, () => {
         c.strokeStyle = col; c.lineWidth = w * 0.05; c.lineCap = 'round';
         c.beginPath(); c.moveTo(sd * w * 0.14, -h * 0.6); c.lineTo(sd * w * 0.3, -h * 0.55); c.lineTo(sd * w * 0.36, -h * 0.46); c.stroke();
-        c.fillStyle = '#2a6f97';
+        c.fillStyle = P.wing || '#2a6f97';
         for (let i = 0; i < 4; i++) { c.beginPath(); c.moveTo(sd * w * (0.2 + i * 0.04), -h * (0.58 - i * 0.025)); c.lineTo(sd * w * (0.22 + i * 0.04), -h * (0.5 - i * 0.025)); c.lineTo(sd * w * (0.25 + i * 0.04), -h * (0.57 - i * 0.025)); c.fill(); }
         claws(c, sd * w * 0.36, -h * 0.46, w * 0.06, 3);
       });
@@ -158,13 +89,21 @@ function raptor(c, w, h, A) {
     c.beginPath(); c.moveTo(0, -h * 0.62); c.quadraticCurveTo(A.headX * w * 0.6, -h * 0.72 + A.headY * h * 0.5, A.headX * w, -h * 0.8 + A.headY * h); c.stroke();
     part(c, 0, -h * 0.8, A.headX * w, A.headY * h, A.headS, A.headRot, () => {
       const hy = -h * 0.86, hw = w * 0.3, hh = h * 0.13;
-      c.fillStyle = '#2a9df4'; // mào lông dựng lên khi gồng
-      for (let i = 0; i < 6; i++) { const x = (i - 2.5) * hw * 0.12; c.beginPath(); c.moveTo(x - hw * 0.05, hy - hh * 0.6); c.lineTo(x + Math.sin(A.t * 3 + i) * hw * 0.02, hy - hh * (1.3 + 0.25 * Math.cos(i * 1.7) + A.glow * 0.4)); c.lineTo(x + hw * 0.05, hy - hh * 0.6); c.fill(); }
+      if (P.dome) { // Pachycephalosaurus: vòm sọ dày, viền núm gai
+        const dg = c.createRadialGradient(-hw * 0.1, hy - hh * 1.1, hw * 0.05, 0, hy - hh * 0.7, hw * 0.6); dg.addColorStop(0, '#f0dcb0'); dg.addColorStop(1, shade(P.dome, -0.3));
+        ell(c, 0, hy - hh * 0.75, hw * 0.52, hh * 0.95); c.fillStyle = dg; c.fill();
+        c.fillStyle = shade(col, -0.35);
+        for (let i = 0; i < 9; i++) { const a = Math.PI * (0.95 + i / 8 * 1.1); ell(c, Math.cos(a) * hw * 0.55, hy - hh * 0.45 + Math.sin(a) * hh * 0.5, hw * 0.045, hh * 0.08); c.fill(); }
+      } else if (P.crest !== null) {
+        c.fillStyle = P.crest || '#2a9df4'; // mào lông dựng lên khi gồng
+        for (let i = 0; i < 6; i++) { const x = (i - 2.5) * hw * 0.12; c.beginPath(); c.moveTo(x - hw * 0.05, hy - hh * 0.6); c.lineTo(x + Math.sin(A.t * 3 + i) * hw * 0.02, hy - hh * (1.3 + 0.25 * Math.cos(i * 1.7) + A.glow * 0.4)); c.lineTo(x + hw * 0.05, hy - hh * 0.6); c.fill(); }
+      }
       c.beginPath(); c.moveTo(-hw / 2, hy - hh * 0.2); c.quadraticCurveTo(-hw * 0.45, hy - hh * 0.9, 0, hy - hh * 0.85);
       c.quadraticCurveTo(hw * 0.45, hy - hh * 0.9, hw / 2, hy - hh * 0.2); c.lineTo(hw * 0.3, hy + hh * 0.5); c.quadraticCurveTo(0, hy + hh * 0.75, -hw * 0.3, hy + hh * 0.5); c.closePath();
       c.fillStyle = bodyGrad(c, 0, hy, hw * 0.5, col); c.fill();
+      if (P.mask) { c.fillStyle = P.mask; ell(c, -hw * 0.3, hy - hh * 0.3, hw * 0.17, hh * 0.22, 0.3); c.fill(); ell(c, hw * 0.3, hy - hh * 0.3, hw * 0.17, hh * 0.22, -0.3); c.fill(); }
       c.strokeStyle = dark; c.lineWidth = w * 0.015; c.beginPath(); c.moveTo(0, hy - hh * 0.8); c.lineTo(0, hy + hh * 0.1); c.stroke();
-      eyes(c, hw * 0.3, hy - hh * 0.3, hw * 0.09, A, col, hw * 0.15);
+      eyes(c, hw * 0.3, hy - hh * 0.3, hw * (P.eyeR || 0.09), A, col, P.dome ? 0 : hw * 0.15);
       ell(c, -hw * 0.07, hy + hh * 0.25, hw * 0.025, hh * 0.05); c.fillStyle = '#1b1208'; c.fill(); ell(c, hw * 0.07, hy + hh * 0.25, hw * 0.025, hh * 0.05); c.fill();
       mouth(c, 0, hy + hh * 0.5, hw * 0.62, A.jaw * h * 0.12, col, 7, hh * 0.3);
     });
@@ -244,7 +183,12 @@ function ptero(c, w, h, A) {
   });
 }
 
-const DRAW = { trex, raptor, trike, ptero };
+const DRAW = {
+  trex, raptor, trike, ptero, ...SPECIES_DRAW,
+  compy: (c, w, h, A) => raptor(c, w, h, { ...A, pal: PAL.compy }),
+  pachy: (c, w, h, A) => raptor(c, w, h, { ...A, pal: PAL.pachy }),
+};
+const WATER = new Set(['deino', 'mosa']);
 
 /** Vẽ 1 khủng long vào ctx tại khung B (gốc = giữa chân). A: tư thế (xem P0). */
 export function drawDino(ctx, key, B, A) {
@@ -252,176 +196,256 @@ export function drawDino(ctx, key, B, A) {
   ctx.save();
   ctx.translate(B.x, B.y);
   if (A.crouch) ctx.scale(1 + A.crouch * 0.04, 1 - A.crouch * 0.08);
-  ctx.fillStyle = 'rgba(0,0,0,0.28)'; ell(ctx, 0, key === 'ptero' ? B.h * 0.25 : 0, B.w * 0.36, B.h * 0.045); ctx.fill();
-  DRAW[key](ctx, B.w, B.h, A);
+  if (!WATER.has(key)) { ctx.fillStyle = 'rgba(0,0,0,0.28)'; ell(ctx, 0, key === 'ptero' ? B.h * 0.25 : 0, B.w * 0.36, B.h * 0.045); ctx.fill(); }
+  (DRAW[key] || trex)(ctx, B.w, B.h, A);
   ctx.restore();
 }
 
-// ---------------- Biên đạo động tác ----------------
+// ---------------- Biên đạo động tác (theo MẪU đòn, dùng chung mọi loài) ----------------
 const clamp01 = x => Math.max(0, Math.min(1, x));
 const easeOut = x => 1 - Math.pow(1 - clamp01(x), 3);
-const easeIn = x => Math.pow(clamp01(x), 2);
 const easeInOut = x => { x = clamp01(x); return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2; };
-/** Đường cong 0 → 1 → 0: lên trong [a,b], giữ tới c, về 0 tại d. */
+/** 0 → 1 → 0: lên trong [a,b], giữ tới c, về 0 tại d. */
 const env = (x, a, b, c, d) => (x <= a || x >= d ? 0 : x < b ? easeOut((x - a) / (b - a)) : x <= c ? 1 : 1 - easeInOut((x - c) / (d - c)));
-export const STRIKE_LEAD = 0.22; // động tác ra đòn bắt đầu trước thời điểm trúng 0,22 s → hình "chạm" đúng lúc chốt né/đỡ
+export const STRIKE_LEAD = 0.22; // động tác ra đòn bắt đầu trước lúc chạm 0,22 s → hình "chạm" đúng lúc chốt né/đỡ
 
 /**
- * Tư thế từng bộ phận + biến đổi toàn thân theo giai đoạn (đi tới / chờ / gồng / ra đòn / thu về / choáng / gục).
- * @returns { A, sx, ox, oy, rot, focusV (điểm phóng to theo chiều cao 0..1), shake, stomp (vừa dậm chân) }
+ * Tư thế từng bộ phận + biến đổi toàn thân. Gồng (k 0→1) rồi ra đòn (s: kể từ lúc bắt đầu vung, chạm tại STRIKE_LEAD).
+ * @returns { A, sx, ox, oy, rot, focusV, shake, stomp, tmpl, k, s }
  */
 export function dinoPose(d, clock, t, W, H) {
   const key = d.key, A = { ...P0, t };
   let sx = 1, ox = 0, oy = 0, rot = 0, focusV = 0.6, shake = 0, stomp = false;
-  // nền: thở, đảo mắt, đuôi ve vẩy, cánh vỗ
+  const big = key === 'trex' || key === 'trike' || key === 'ankylo' || key === 'stego' || key === 'spino' || key === 'allo';
   A.bob = Math.sin(t * 2.2) * 0.008; A.look = Math.sin(t * 0.7) * 0.4; A.tail = Math.sin(t * 1.4) * 0.35;
-  A.headRot = Math.sin(t * 0.9) * 0.04; A.jaw = 0.12 + 0.08 * Math.max(0, Math.sin(t * 0.8)) ** 8 * 6; // thỉnh thoảng nhe răng
-  A.wing = Math.sin(t * 6); A.armL = A.armR = Math.sin(t * 1.7) * 0.08;
-  const walk = (speed, liftAmt = 1) => { // chu kỳ bước: 2 chân luân phiên, thân nhún, đầu gật
+  A.headRot = Math.sin(t * 0.9) * 0.04; A.jaw = 0.12 + 0.08 * Math.max(0, Math.sin(t * 0.8)) ** 8 * 6;
+  A.wing = Math.sin(t * 6); A.armL = A.armR = Math.sin(t * 1.7) * 0.08; A.broken = Object.fromEntries(Object.entries(d.parts || {}).map(([k, p]) => [k, p.broken]));
+  if (d.rage) A.glow = Math.max(A.glow, 0.25 * d.rage); // giận: mắt đỏ dần
+  const walk = (speed, liftAmt = 1) => {
     const ph = t * speed, s = Math.sin(ph);
     A.legL = Math.max(0, s) * liftAmt; A.legR = Math.max(0, -s) * liftAmt;
     A.bob = Math.abs(s) * 0.025; A.headY = Math.abs(s) * 0.012; A.headRot = s * 0.05; A.tail = -s * 0.5;
     stomp = Math.abs(s) < 0.12;
   };
-  const dir = d.attack?.dir || 0, kind = d.attack?.kind;
   if (d.phase === 'enter') {
-    walk(key === 'raptor' ? 9 : key === 'trike' ? 5 : 6.5);
-    if (key === 'ptero') { A.wing = Math.sin(t * 9); A.legL = A.legR = 0; A.bob = Math.sin(t * 9) * 0.02; }
-  } else if (d.phase === 'counter') { // choáng: đầu gục, lảo đảo, mắt nheo, hàm trễ
-    A.headY = 0.05; A.headRot = Math.sin(t * 7) * 0.18; A.headX = Math.sin(t * 5) * 0.03; A.jaw = 0.55; A.squint = 0.8; A.wing = Math.sin(t * 3) * 0.4;
-    rot = Math.sin(t * 5) * 0.04; A.tail = 0; A.armL = A.armR = -0.3;
-  } else if (d.phase === 'down') { // gục: khuỵu chân, nghiêng đổ, đầu rũ
+    if (WATER.has(key)) { oy = H * 0.12 * (1 - d.t / 2.2); A.jaw = 0; } // trồi dần lên
+    else if (key === 'ptero') { A.wing = Math.sin(t * 9); A.bob = Math.sin(t * 9) * 0.02; }
+    else walk(key === 'raptor' || key === 'compy' ? 10 : key === 'pachy' ? 8 : big ? 5 : 6.5);
+  } else if (d.phase === 'counter' || d.phase === 'tired') { // choáng / thở dốc: đầu gục, lảo đảo, hàm trễ, mắt nheo
+    const pant = Math.sin(t * (d.phase === 'tired' ? 9 : 5));
+    A.headY = 0.06; A.headRot = Math.sin(t * 7) * 0.18; A.headX = Math.sin(t * 5) * 0.03; A.jaw = 0.5 + 0.2 * pant; A.squint = 0.8; A.wing = Math.sin(t * 3) * 0.4;
+    rot = Math.sin(t * 5) * 0.04; A.tail = 0; A.armL = A.armR = -0.3; A.bob = d.phase === 'tired' ? 0.02 * pant : 0; A.glow = 0;
+    if (WATER.has(key)) { oy = H * 0.04; A.jaw = 0.4; }
+  } else if (d.phase === 'rest') { // thị uy: phô mào / buồm / phiến, gầm trầm
+    const k = env(d.t, 0, 0.6, 2.8, 3.6);
+    A.headY = -0.06 * k; A.jaw = 0.2 + 0.5 * k * (0.5 + 0.5 * Math.sin(t * 3)); A.sailOpen = k; A.glow = 0.4 * k; A.armL = A.armR = 0.4 * k; A.wingOpen = 0.6 * k; rot = 0.06 * k * Math.sin(t * 1.2);
+  } else if (d.phase === 'down') {
     const k = easeInOut(d.t / 1.2);
     A.crouch = k; A.headY = 0.1 * k; A.headRot = 0.5 * k; A.jaw = 0.7; A.squint = 1; A.wingFold = k; A.wing = -k;
-    rot = 0.85 * k * (key === 'ptero' ? -1 : 1); oy = H * 0.06 * k;
+    rot = 0.85 * k * (key === 'ptero' ? -1 : 1); oy = H * 0.06 * k + (WATER.has(key) ? H * 0.2 * k : 0);
   }
 
-  // gồng đòn (k: 0 → 1) rồi ra đòn (s: thời gian kể từ lúc bắt đầu vung, chạm tại STRIKE_LEAD)
-  let k = -1, s = -1;
-  if (d.phase === 'windup') { const rem = d.windup - d.t; if (rem > STRIKE_LEAD) k = clamp01(d.t / (d.windup - STRIKE_LEAD)); else { k = 1; s = STRIKE_LEAD - rem; } }
-  else if (d.hitAt != null && clock - d.hitAt < 1.2 && ['attack', 'recover', 'counter'].includes(d.phase)) s = STRIKE_LEAD + (clock - d.hitAt);
-  if (k >= 0 || s >= 0) {
-    A.glow = d.phase === 'windup' || d.phase === 'attack' ? 1 : 0;
-    const w = k >= 0 ? easeInOut(k) : 1;                                // lấy đà
-    const tr = Math.sin(t * 40) * 0.5 + 0.5;                             // run bần bật khi gồng
-    const L = s >= 0 ? env(s, 0, STRIKE_LEAD, STRIKE_LEAD + 0.12, 0.95) : 0; // lao tới → giữ → thu về
-    const hitBack = d.phase === 'counter' ? 1 : 0;
-    switch (kind) {
-      case 'bite': { // ngửa đầu, há dần, nghiêng sang bên → phóng đầu sang phía người chơi đứng, ĐỚP khép hàm
-        // lấy đà: ngả đầu ra sau & sang phía ngược lại, run bần bật → lao tới + hạ đầu xuống ngang mặt người chơi
-        A.headY = -0.12 * w * (1 - L) + 0.2 * L; A.headX = dir * 0.06 * w * (1 - L) - dir * 0.32 * L; A.headRot = (dir * 0.3 * w + Math.sin(t * 25) * 0.04 * w) * (1 - L);
-        A.headS = 1 - 0.12 * w + 1.6 * L; A.jaw = s < 0 ? 0.25 + 0.6 * w + tr * 0.05 : s < STRIKE_LEAD - 0.03 ? 1 : 1 - easeOut((s - STRIKE_LEAD + 0.03) / 0.08) * 0.95;
-        A.armL = A.armR = 0.5 * w; A.legL = key === 'raptor' ? 0.4 * w : 0; A.tail = dir * 0.8 * w; A.crouch = 0.4 * w * (1 - L);
-        sx = 1 - 0.06 * w * (1 - L) + 0.12 * L; ox = dir * W * 0.04 * w * (1 - L) - dir * W * 0.05 * L; oy = -H * 0.02 * w * (1 - L); focusV = 0.85;
-        if (hitBack) { A.headX *= 0.3; A.headS = 1 + 0.2 * (1 - L); }
+  // ---- đòn: nhát đang gồng / đang vung, hoặc thu về sau nhát vừa chạm ----
+  let k = -1, s = -1, hit = null;
+  if (d.phase === 'attack' && d.cur) {
+    const to = d.curTo, tele = Math.max(0.3, d.cur.tele || 1);
+    if (to > STRIKE_LEAD) { hit = d.cur; k = clamp01(1 - (to - STRIKE_LEAD) / Math.max(0.2, tele - STRIKE_LEAD)); }
+    else if (to > -0.5) { hit = d.cur; k = 1; s = STRIKE_LEAD - to; }
+    if (d.lastStrike && clock - d.lastStrike.at < 0.6 && k < 0.5 && d.lastStrike !== d.cur) { hit = d.lastStrike.hit; k = 1; s = STRIKE_LEAD + (clock - d.lastStrike.at); }
+  } else if (d.lastStrike && clock - d.lastStrike.at < 0.9 && ['counter', 'recover', 'tired', 'idle'].includes(d.phase)) { hit = d.lastStrike.hit; k = 1; s = STRIKE_LEAD + (clock - d.lastStrike.at); }
+  if (hit) {
+    const tmpl = hit.tmpl, dir = hit.dir || 0, w = easeInOut(k);
+    const tr = Math.sin(t * 40) * 0.5 + 0.5;
+    const L = s >= 0 ? env(s, 0, STRIKE_LEAD, STRIKE_LEAD + 0.12, 0.95) : 0;
+    const fake = hit.fake;
+    const Lf = fake ? Math.min(L, 0.25) : L; // giả đòn: vung nửa chừng rồi giật lại
+    if (d.phase === 'attack') A.glow = Math.max(A.glow, 0.6 + 0.4 * w);
+    switch (tmpl) {
+      case 'bite': { // ngả đầu ra sau & sang phía ngược, run → phóng đầu tới phía người chơi đứng, ĐỚP khép hàm
+        A.headY = -0.12 * w * (1 - Lf) + 0.2 * Lf; A.headX = dir * 0.06 * w * (1 - Lf) - dir * 0.32 * Lf; A.headRot = (dir * 0.3 * w + Math.sin(t * 25) * 0.04 * w) * (1 - Lf);
+        A.headS = 1 - 0.12 * w + 1.6 * Lf; A.jaw = s < 0 ? 0.25 + 0.6 * w + tr * 0.05 : s < STRIKE_LEAD - 0.03 ? 1 : 1 - easeOut((s - STRIKE_LEAD + 0.03) / 0.08) * 0.95;
+        A.armL = A.armR = 0.5 * w; A.tail = dir * 0.8 * w; A.crouch = 0.4 * w * (1 - Lf);
+        sx = 1 - 0.06 * w * (1 - Lf) + 0.12 * Lf; ox = dir * W * 0.04 * w * (1 - Lf) - dir * W * 0.05 * Lf; focusV = 0.85;
         break;
       }
-      case 'charge': { // cúi đầu chĩa sừng, chân cào đất, khịt → lao cả thân sang bên
-        A.headY = 0.1 * w; A.headS = 1 + 0.12 * w + 0.3 * L; A.jaw = 0.3 * w + 0.2 * Math.max(0, Math.sin(t * 9)) * w * (1 - L); A.headRot = Math.sin(t * 9) * 0.06 * w * (1 - L);
+      case 'chop': { // BỔ RÌU: ngẩng cao, há cực rộng → bổ thẳng xuống một bên
+        A.headY = -0.18 * w * (1 - Lf) + 0.25 * Lf; A.headX = -dir * 0.28 * Lf + dir * 0.04 * w * (1 - Lf); A.headS = 1 + 1.2 * Lf; A.jaw = s < 0 ? 0.3 + 0.7 * w : 1 - 0.8 * clamp01((s - STRIKE_LEAD) / 0.1);
+        A.headRot = -dir * 0.25 * Lf; A.armL = A.armR = 0.7 * w; A.tail = -0.7 * w; oy = -H * 0.03 * w * (1 - Lf); focusV = 0.85;
+        if (key === 'stego') { A.tail = -dir * (0.4 + 0.6 * w) + dir * 1.6 * Lf; rot = dir * 0.15 * w - dir * 0.3 * Lf; A.headX = 0; A.headS = 1; A.headY = 0; } // đâm gai: xoay hông
+        break;
+      }
+      case 'peck': { // MỔ: co cổ chữ S, đứng im → thọc mỏ cực nhanh
+        A.headY = -0.08 * w * (1 - Lf) + 0.18 * Lf; A.headS = 1 - 0.15 * w + 1.5 * Lf; A.headX = -dir * 0.3 * Lf; A.look = -dir;
+        A.jaw = s >= 0 && s < STRIKE_LEAD ? 0.6 : 0.1; A.bob = 0; focusV = 0.88; A.wing = key === 'ptero' ? Math.sin(t * 12) : A.wing;
+        break;
+      }
+      case 'charge': case 'ram': { // HÚC / LAO: cúi đầu chĩa sừng/vòm, cào đất, khịt → lao cả thân sang bên
+        A.headY = 0.1 * w; A.headS = 1 + 0.12 * w + 0.3 * Lf; A.jaw = 0.3 * w; A.headRot = Math.sin(t * 9) * 0.06 * w * (1 - Lf);
         const paw = s < 0 ? Math.max(0, Math.sin(t * 11)) * Math.min(1, w * 1.6) : 0;
         A.legL = -dir < 0 ? paw : 0; A.legR = -dir > 0 ? paw : 0; stomp = s < 0 && paw < 0.1 && w > 0.3;
         if (s >= 0) { const g = Math.sin(t * 20); A.legL = Math.max(0, g); A.legR = Math.max(0, -g); A.bob = Math.abs(g) * 0.03; }
-        sx = 1 + 0.65 * L; ox = dir * W * 0.04 * w * (1 - L) - dir * W * 0.3 * L; oy = H * 0.05 * L; focusV = 0.5; A.crouch = 0.6 * w * (1 - L);
+        const sz = tmpl === 'ram' ? 0.9 : 0.65;
+        sx = 1 + sz * Lf; ox = dir * W * 0.04 * w * (1 - Lf) - dir * W * 0.3 * Lf; oy = H * 0.05 * Lf; focusV = tmpl === 'ram' ? 0.75 : 0.5; A.crouch = 0.6 * w * (1 - Lf);
+        if (hit.flank) { ox = dir * W * 0.12 * w * (1 - Lf) - dir * W * 0.25 * Lf; rot = dir * 0.1 * w; } // húc sườn: chạy chéo
         break;
       }
-      case 'toss': { // cúi sát đất rồi HẤT sừng lên
-        A.headY = 0.14 * w * (1 - L) - 0.16 * L; A.headRot = 0.16 * Math.sin(t * 12) * w * (1 - L) - 0.1 * L; A.headS = 1 + 0.15 * w + 0.5 * L;
-        A.jaw = 0.5 * L; sx = 1 + 0.35 * L; oy = -H * 0.06 * L; focusV = 0.5; A.crouch = 0.7 * w * (1 - L);
+      case 'leap': { // PHÓNG KHỎI NƯỚC: chìm xuống (chỉ thấy mắt), gợn sóng → trồi vọt lên sang 1 bên
+        oy = H * 0.1 * w * (1 - Lf) - H * 0.2 * Lf; sx = 1 + 0.8 * Lf; ox = -dir * W * 0.25 * Lf; A.jaw = s < 0 ? 0.1 : 1 - 0.7 * clamp01((s - STRIKE_LEAD) / 0.15);
+        A.headS = 1 + 0.3 * Lf; A.armL = A.armR = 0.8 * Lf; focusV = 0.7;
         break;
       }
-      case 'pounce': { // hạ thấp người, giương móng → BẬT nhảy vồ thẳng vào mặt
-        A.crouch = w * (1 - L); A.armL = A.armR = 0.9 * w + 0.4 * L; ox = Math.sin(t * 16) * W * 0.012 * w * (1 - L); A.jaw = 0.4 * w + 0.6 * L; A.tail = -0.9 * w;
-        A.legL = A.legR = L; A.headS = 1 + 0.3 * L;
-        sx = 1 - 0.05 * w * (1 - L) + 1.0 * L; oy = H * 0.03 * w * (1 - L) + H * 0.1 * L; focusV = 0.86; // bật lên, mặt lao thẳng vào giữa màn hình
+      case 'sweepLow': case 'stomp': case 'snapLow': { // đòn THẤP → NHẢY
+        if (tmpl === 'stomp') { A.legL = w; oy = -H * 0.05 * w * (1 - Lf); A.headY = -0.08 * w; A.jaw = 0.6 * w; A.crouch = 0; if (s > STRIKE_LEAD - 0.02 && s < STRIKE_LEAD + 0.1) shake = 16; A.legL = s >= 0 ? 0 : w; A.armL = A.armR = 0.6 * w; }
+        else if (tmpl === 'snapLow') { A.headY = -0.04 * w * (1 - Lf) + 0.38 * Lf; A.headS = 1 + 0.8 * Lf; A.jaw = s < 0 ? 0.3 + 0.5 * w : 1 - 0.9 * clamp01((s - STRIKE_LEAD) / 0.08); A.crouch = 0.5 * w; focusV = 0.85; sx = 1 + 0.15 * Lf; }
+        else { A.tail = -1 * w + 2 * Lf; rot = 0.14 * w - 0.3 * Lf; A.crouch = 0.5 * w; A.headX = 0.05 * w * (1 - Lf); A.jaw = 0.3 * w; } // quét đuôi / chùy thấp
         break;
       }
-      case 'dive': { // bay vọt lên, xoè cánh hết cỡ → cụp cánh BỔ NHÀO xuống mặt
-        A.wing = s < 0 ? Math.sin(t * 14) * 0.6 + 0.4 * w : -0.6; A.wingFold = L; A.jaw = 0.3 * w + 0.7 * L; A.legL = A.legR = L;
-        A.headS = 1 + 0.4 * L; sx = 1 + 1.3 * L; oy = -H * 0.14 * w * (1 - L) + H * 0.05 * L; focusV = 0.65;
+      case 'sweepHigh': case 'swipe': case 'pounce': case 'dive': { // đòn NGANG ĐẦU / VỒ → NGỒI
+        if (tmpl === 'pounce') { A.crouch = w * (1 - Lf); A.armL = A.armR = 0.9 * w + 0.4 * Lf; ox = Math.sin(t * 16) * W * 0.012 * w * (1 - Lf); A.jaw = 0.4 * w + 0.6 * Lf; A.tail = -0.9 * w; A.legL = A.legR = Lf; A.headS = 1 + 0.3 * Lf; sx = 1 - 0.05 * w * (1 - Lf) + 1.0 * Lf; oy = H * 0.03 * w * (1 - Lf) + H * 0.1 * Lf; focusV = 0.86; }
+        else if (tmpl === 'dive') { A.wing = s < 0 ? Math.sin(t * 14) * 0.6 + 0.4 * w : -0.6; A.wingFold = Lf; A.jaw = 0.3 * w + 0.7 * Lf; A.legL = A.legR = Lf; A.headS = 1 + 0.4 * Lf; sx = 1 + 1.3 * Lf; oy = -H * 0.14 * w * (1 - Lf) + H * 0.05 * Lf; focusV = 0.65; A.wingOpen = w * (1 - Lf); }
+        else if (tmpl === 'swipe') { A.armL = 1.2 * w - 2.4 * Lf; A.armR = 1.2 * w - 2.4 * Lf; A.headY = -0.05 * w; A.jaw = 0.5 * w; sx = 1 + 0.25 * Lf; focusV = 0.6; }
+        else if (key === 'trex' || key === 'allo' || key === 'carno') { A.headRot = 0.4 * w - 0.8 * Lf; A.headX = 0.12 * w - 0.3 * Lf; A.headY = 0.1 * Lf; A.headS = 1 + 0.9 * Lf; A.jaw = 0.5 + 0.5 * w; focusV = 0.85; sx = 1 + 0.1 * Lf; } // cắn ngang mặt (sẹo mặt)
+        else { A.tail = -1 * w + 2 * Lf; rot = 0.2 * w - 0.4 * Lf; A.headX = 0.06 * w * (1 - Lf) - 0.08 * Lf; A.headRot = 0.2 * w - 0.4 * Lf; A.jaw = 0.3 * w; } // quất đuôi gai / quét diềm
         break;
       }
-      case 'rocks': { // vỗ cánh mạnh, giật đầu mỗi lần ném
-        A.wing = Math.sin(t * 16); const flick = s >= 0 ? Math.max(0, Math.sin((s - STRIKE_LEAD) * 9)) : 0;
-        A.headY = 0.04 * flick; A.headS = 1 + 0.25 * flick; A.jaw = 0.4 + 0.5 * flick; oy = -H * 0.04 * w;
+      case 'roar': case 'gust': case 'wave': case 'butt': { // đẩy / gầm / luồng → GIƠ 2 TAY ĐỠ
+        if (tmpl === 'roar') { A.headY = -0.15 * w * (1 - Lf) + 0.08 * Lf; A.headRot = Math.sin(t * 30) * 0.03 * Lf; A.headS = 1 - 0.12 * w + 0.6 * Lf; A.jaw = s < 0 ? 0.2 + 0.4 * w : 1; A.armL = A.armR = 0.9 * w; A.tail = 0.6 * Math.sin(t * 8) * w; A.sailOpen = w; sx = 1 + 0.06 * w + 0.08 * Lf; oy = -H * 0.03 * w * (1 - Lf); focusV = 0.85; shake = s >= STRIKE_LEAD ? 14 * (1 - clamp01((s - STRIKE_LEAD) / 0.6)) : 2 * w; }
+        else if (tmpl === 'gust') { A.wingOpen = w; A.wing = Math.sin(t * 10) * w; A.legL = A.legR = 0.5 * Lf; oy = -H * 0.08 * Lf; A.headY = -0.06 * w; shake = s >= STRIKE_LEAD ? 8 : 0; }
+        else if (tmpl === 'wave') { A.tail = -0.6 * w + 1.6 * Lf; A.armL = A.armR = 0.4 * w; oy = H * 0.04 * w * (1 - Lf); rot = 0.08 * w - 0.12 * Lf; }
+        else { A.headY = 0.08 * w * (1 - Lf); A.headS = 1 + 0.6 * Lf; sx = 1 + 0.25 * Lf; A.crouch = 0.4 * w * (1 - Lf); focusV = 0.84; } // húc sừng thẳng vào giữa
         break;
       }
-      case 'roar': { // ngửa cổ hít hơi, phình ngực → chồm đầu tới GẦM, há hết cỡ
-        A.headY = -0.15 * w * (1 - L) + 0.08 * L; A.headRot = Math.sin(t * 30) * 0.03 * L; A.headS = 1 - 0.12 * w + 0.6 * L;
-        A.jaw = s < 0 ? 0.2 + 0.4 * w : 1; A.armL = A.armR = 0.6 * w; A.tail = 0.6 * Math.sin(t * 8) * w; A.bob = 0.02 * w;
-        sx = 1 + 0.06 * w + 0.08 * L; oy = -H * 0.03 * w * (1 - L); focusV = 0.85; A.armL = A.armR = 0.9 * w; shake = s >= STRIKE_LEAD ? 14 * (1 - clamp01((s - STRIKE_LEAD) / 0.6)) : 2 * w;
+      case 'lock': { // KHOÁ SỪNG: tiến chậm, sừng ngang ngực → giằng co (rung, đẩy)
+        A.headY = 0.08 * w; A.headS = 1 + 0.15 * w; sx = 1 + 0.25 * w + 0.3 * L;
+        if (s >= STRIKE_LEAD) { const push = Math.sin(t * 14); ox = push * W * 0.01; A.headRot = push * 0.05; shake = 5; A.legL = Math.max(0, Math.sin(t * 8)); A.legR = Math.max(0, -Math.sin(t * 8)); sx = 1.55; }
+        focusV = 0.6;
         break;
       }
-      case 'tail': { // xoay người lấy đà, đuôi vung rộng → XOAY quật đuôi
-        A.tail = -1 * w + 2 * L; A.headX = 0.06 * w * (1 - L) - 0.08 * L; A.headRot = 0.15 * w - 0.3 * L; A.jaw = 0.3 * w;
-        rot = 0.22 * w - 0.4 * L; ox = W * 0.03 * w - W * 0.05 * L; A.legL = 0.4 * w * (1 - L);
-        break;
-      }
+      case 'throw': { A.headY = 0.05 * Lf; A.headS = 1 + 0.25 * Lf; A.jaw = 0.4 + 0.5 * Lf; A.wing = Math.sin(t * 16); A.armL = A.armR = key === 'ankylo' || key === 'pachy' ? 0 : 0.3 * w; A.legL = (key === 'ankylo' || key === 'pachy') ? Math.max(0, Math.sin(t * 12)) * w : 0; break; }
+      case 'mob': { A.jaw = 0.6 * w; A.headY = -0.05 * w; A.crouch = 0.2 * w; A.armL = A.armR = 0.5 * w; break; } // gọi bầy
+      case 'myth': { A.myth = env(s >= 0 ? s : -1, 0, 0.25, 0.9, 1.3) || (k > 0.5 ? (k - 0.5) * 2 : 0); A.jaw = 0.7 * w; break; }
+      case 'display': { A.sailOpen = w; A.glow = Math.max(A.glow, w); A.headY = -0.05 * w; A.jaw = 0.3 * w; rot = 0.08 * w; break; }
     }
-    if (hitBack && L > 0) A.squint = 0.5;
+    if (fake && s > STRIKE_LEAD * 0.5) { A.headY -= 0.05; A.jaw = 0.2; } // "nhả đòn": giật lại
+    return { A, sx, ox, oy, rot, focusV, shake, stomp, tmpl, k, s, hit };
   }
   if (d.recoil) { A.headRot += 0.25 * d.recoil * (d.recoil > 0.5 ? 1 : -1); A.headY -= 0.03 * d.recoil; A.jaw = Math.max(A.jaw, 0.7 * d.recoil); A.squint = Math.max(A.squint, d.recoil); sx *= 1 - 0.04 * d.recoil; }
-  if (key === 'ptero' && d.phase !== 'down') { A.legL = Math.max(A.legL, 0); A.legR = Math.max(A.legR, 0); }
-  return { A, sx, ox, oy, rot, focusV, shake, stomp };
+  return { A, sx, ox, oy, rot, focusV, shake, stomp, tmpl: null, k: -1, s: -1, hit: null };
 }
 
-/** Nền tiền sử: trời hoàng hôn, núi lửa phun khói, rừng dương xỉ, mặt đất phối cảnh. Vẽ sẵn tầng tĩnh vào canvas đệm. */
-export function drawDinoBg(r, t) {
-  const { ctx, W, H } = r, hz = H * 0.42;
-  const key = `${W}x${H}`;
-  if (!r._dinoBg || r._dinoBgKey !== key) {
-    const cv = r._dinoBg || (r._dinoBg = document.createElement('canvas'));
-    cv.width = W; cv.height = H; r._dinoBgKey = key;
-    const c = cv.getContext('2d');
-    const sky = c.createLinearGradient(0, 0, 0, hz); sky.addColorStop(0, '#2b1450'); sky.addColorStop(0.45, '#c2456a'); sky.addColorStop(0.8, '#ff8a4c'); sky.addColorStop(1, '#ffc46b');
-    c.fillStyle = sky; c.fillRect(0, 0, W, hz + 2);
-    const sun = c.createRadialGradient(W * 0.3, hz * 0.9, 0, W * 0.3, hz * 0.9, H * 0.3); sun.addColorStop(0, 'rgba(255,240,180,0.95)'); sun.addColorStop(0.2, 'rgba(255,200,120,0.6)'); sun.addColorStop(1, 'rgba(255,160,90,0)');
+/** Nền theo màn: plains (Hell Creek hoàng hôn, núi lửa chỉ để trang trí), forest (rừng Jura), river (đầm sông), sea (bờ biển nội địa), night (đêm). */
+function paintBg(c, W, H, env) {
+  const hz = H * 0.42;
+  const SKY = {
+    plains: ['#2b1450', '#c2456a', '#ff8a4c', '#ffc46b'], forest: ['#1d4a5a', '#4f8f8a', '#b8d8a8', '#e8eec0'],
+    river: ['#2a3b4a', '#5f7f80', '#a9b9a0', '#d8d8b8'], sea: ['#1f5f9f', '#4a9fd8', '#a8dcf0', '#e8f6ff'], night: ['#050818', '#0f1a3a', '#1f2f5a', '#3a4a70'],
+  }[env] || ['#2b1450', '#c2456a', '#ff8a4c', '#ffc46b'];
+  const sky = c.createLinearGradient(0, 0, 0, hz); SKY.forEach((col, i) => sky.addColorStop([0, 0.45, 0.8, 1][i], col));
+  c.fillStyle = sky; c.fillRect(0, 0, W, hz + 2);
+  const sunX = env === 'sea' ? W * 0.7 : W * 0.3;
+  if (env === 'night') { // trăng + sao
+    c.fillStyle = '#fff'; for (let i = 0; i < 90; i++) { c.globalAlpha = 0.3 + 0.7 * ((i * 37) % 10) / 10; ell(c, ((i * 97) % 1000) / 1000 * W, ((i * 53) % 1000) / 1000 * hz * 0.95, 1 + (i % 3) * 0.6, 1 + (i % 3) * 0.6); c.fill(); }
+    c.globalAlpha = 1; const mg = c.createRadialGradient(W * 0.75, H * 0.14, 0, W * 0.75, H * 0.14, H * 0.12); mg.addColorStop(0, '#fffbe8'); mg.addColorStop(0.4, '#e8e2c8'); mg.addColorStop(1, 'rgba(232,226,200,0)');
+    c.fillStyle = mg; c.fillRect(0, 0, W, hz);
+  } else {
+    const sun = c.createRadialGradient(sunX, hz * 0.85, 0, sunX, hz * 0.85, H * 0.32); sun.addColorStop(0, 'rgba(255,245,200,0.9)'); sun.addColorStop(0.25, 'rgba(255,220,150,0.45)'); sun.addColorStop(1, 'rgba(255,200,120,0)');
     c.fillStyle = sun; c.fillRect(0, 0, W, hz);
-    c.fillStyle = '#7a3a6b'; c.beginPath(); c.moveTo(0, hz); // dãy núi xa
-    for (let x = 0; x <= W; x += W / 12) c.lineTo(x, hz - H * (0.06 + 0.05 * Math.abs(Math.sin(x * 0.013))));
-    c.lineTo(W, hz); c.fill();
-    c.fillStyle = '#4a2246'; c.beginPath(); c.moveTo(W * 0.55, hz); c.lineTo(W * 0.7, hz - H * 0.24); c.lineTo(W * 0.76, hz - H * 0.24); c.lineTo(W * 0.95, hz); c.fill(); // núi lửa
+  }
+  // dãy núi / vách xa
+  c.fillStyle = { plains: '#7a3a6b', forest: '#3f6a6a', river: '#5a6a68', sea: '#7a8fa8', night: '#1a2440' }[env] || '#7a3a6b';
+  c.beginPath(); c.moveTo(0, hz); for (let x = 0; x <= W; x += W / 12) c.lineTo(x, hz - H * (0.06 + 0.05 * Math.abs(Math.sin(x * 0.013)))); c.lineTo(W, hz); c.fill();
+  if (env === 'plains' || env === 'night') { // núi lửa (trang trí — không có cơ sở hoá thạch)
+    c.fillStyle = env === 'night' ? '#140c20' : '#4a2246'; c.beginPath(); c.moveTo(W * 0.55, hz); c.lineTo(W * 0.7, hz - H * 0.24); c.lineTo(W * 0.76, hz - H * 0.24); c.lineTo(W * 0.95, hz); c.fill();
     const lava = c.createLinearGradient(0, hz - H * 0.24, 0, hz - H * 0.12); lava.addColorStop(0, '#ffdd55'); lava.addColorStop(1, 'rgba(255,80,0,0)');
     c.fillStyle = lava; c.beginPath(); c.moveTo(W * 0.7, hz - H * 0.24); c.lineTo(W * 0.76, hz - H * 0.24); c.lineTo(W * 0.745, hz - H * 0.12); c.lineTo(W * 0.715, hz - H * 0.15); c.fill();
-    // rừng ở chân trời: dương xỉ + cọ
-    c.fillStyle = '#20301f';
+  }
+  if (env === 'sea') { // vách đá phấn trắng ven biển
+    c.fillStyle = '#e8e0cc'; c.beginPath(); c.moveTo(0, hz); c.lineTo(0, hz - H * 0.2); c.lineTo(W * 0.12, hz - H * 0.18); c.lineTo(W * 0.2, hz - H * 0.08); c.lineTo(W * 0.24, hz); c.fill();
+    c.fillStyle = 'rgba(160,150,130,0.6)'; for (let i = 0; i < 5; i++) c.fillRect(0, hz - H * (0.17 - i * 0.03), W * (0.13 + i * 0.02), H * 0.006);
+  }
+  // rừng chân trời: forest/river dày cây kim + dương xỉ; plains thưa; sea không cây
+  const tree = { plains: '#20301f', forest: '#183a28', river: '#2a3a2a', night: '#0a1210' }[env];
+  if (tree) {
+    c.fillStyle = tree;
     for (let i = 0; i < 26; i++) { const x = (i / 25) * W, hh = H * (0.03 + 0.03 * ((i * 37) % 5) / 5); ell(c, x, hz, W * 0.035, hh); c.fill(); }
-    for (const [px, ph] of [[0.08, 0.2], [0.18, 0.15], [0.86, 0.22], [0.94, 0.16]]) {
-      const x = W * px, top = hz - H * ph; c.strokeStyle = '#20301f'; c.lineWidth = W * 0.006; c.beginPath(); c.moveTo(x, hz); c.quadraticCurveTo(x + W * 0.01, (hz + top) / 2, x, top); c.stroke();
+    const conifers = env === 'forest' || env === 'river' ? 14 : 0; // cây kim (araucaria) rừng Jura
+    for (let i = 0; i < conifers; i++) { const x = ((i * 61) % 100) / 100 * W, ht = H * (0.12 + 0.12 * ((i * 17) % 7) / 7); c.beginPath(); c.moveTo(x, hz + 2); c.lineTo(x - W * 0.02, hz + 2); c.lineTo(x, hz - ht); c.lineTo(x + W * 0.02, hz + 2); c.fill(); for (let k = 1; k < 4; k++) { c.beginPath(); c.moveTo(x - W * 0.03 * (1 - k * 0.2), hz - ht * k * 0.25); c.lineTo(x, hz - ht * (k * 0.25 + 0.18)); c.lineTo(x + W * 0.03 * (1 - k * 0.2), hz - ht * k * 0.25); c.fill(); } }
+    for (const [px, ph] of env === 'plains' || env === 'night' ? [[0.08, 0.2], [0.18, 0.15], [0.86, 0.22], [0.94, 0.16]] : [[0.05, 0.16], [0.95, 0.18]]) {
+      const x = W * px, top = hz - H * ph; c.strokeStyle = tree; c.lineWidth = W * 0.006; c.beginPath(); c.moveTo(x, hz); c.quadraticCurveTo(x + W * 0.01, (hz + top) / 2, x, top); c.stroke();
       for (let k = 0; k < 6; k++) { const a = Math.PI * (1 + k / 5); c.beginPath(); c.moveTo(x, top); c.quadraticCurveTo(x + Math.cos(a) * W * 0.04, top + Math.sin(a) * H * 0.03 - H * 0.02, x + Math.cos(a) * W * 0.06, top + H * 0.03); c.lineWidth = W * 0.004; c.stroke(); }
     }
-    // mặt đất
-    const gr = c.createLinearGradient(0, hz, 0, H); gr.addColorStop(0, '#5a4a2a'); gr.addColorStop(0.5, '#7b5b33'); gr.addColorStop(1, '#3e2c18');
-    c.fillStyle = gr; c.fillRect(0, hz, W, H - hz);
-    c.strokeStyle = 'rgba(255,220,160,0.07)'; c.lineWidth = 2;
-    for (let i = -6; i <= 6; i++) { c.beginPath(); c.moveTo(W / 2 + i * W * 0.02, hz); c.lineTo(W / 2 + i * W * 0.22, H); c.stroke(); }
-    c.fillStyle = 'rgba(30,20,10,0.35)';
-    for (let i = 0; i < 18; i++) { const y = hz + (H - hz) * Math.pow(((i * 53) % 17) / 17, 1.6), s = (y - hz) / (H - hz); ell(c, ((i * 71) % 97) / 97 * W, y, W * 0.02 * (0.3 + s), H * 0.006 * (0.3 + s)); c.fill(); }
-    // dương xỉ tiền cảnh 2 góc
-    for (const sd of [-1, 1]) {
-      const bx = sd < 0 ? 0 : W;
-      for (let k = 0; k < 7; k++) {
-        const a = (sd < 0 ? -0.15 : Math.PI + 0.15) + sd * k * 0.17 * -1, len = H * (0.28 + 0.05 * Math.sin(k * 2));
-        c.strokeStyle = k % 2 ? '#1f3a1c' : '#2b4d24'; c.lineWidth = W * 0.012; c.lineCap = 'round';
-        const ex = bx + Math.cos(a - sd * 0.9) * len * (sd < 0 ? 1 : 1), ey = H - Math.abs(Math.sin(a - sd * 0.9)) * len;
-        c.beginPath(); c.moveTo(bx, H); c.quadraticCurveTo((bx + ex) / 2, ey - H * 0.05, ex, ey); c.stroke();
-      }
+  }
+  // mặt đất / mặt nước xa
+  const G = { plains: ['#5a4a2a', '#7b5b33', '#3e2c18'], forest: ['#3f5a2a', '#55703a', '#2a3a1c'], river: ['#4a5a3a', '#5f6f48', '#30402a'], sea: ['#d8c89a', '#c8b480', '#9a8458'], night: ['#1e2430', '#262c38', '#10141c'] }[env] || ['#5a4a2a', '#7b5b33', '#3e2c18'];
+  const gr = c.createLinearGradient(0, hz, 0, H); gr.addColorStop(0, G[0]); gr.addColorStop(0.5, G[1]); gr.addColorStop(1, G[2]);
+  c.fillStyle = gr; c.fillRect(0, hz, W, H - hz);
+  if (env === 'sea') { const sg = c.createLinearGradient(0, hz, 0, H * 0.62); sg.addColorStop(0, '#2f7fb8'); sg.addColorStop(1, '#5fb0d8'); c.fillStyle = sg; c.fillRect(0, hz, W, H * 0.2); }
+  if (env === 'river') { const sg = c.createLinearGradient(0, hz + H * 0.04, 0, H * 0.7); sg.addColorStop(0, 'rgba(120,150,140,0.9)'); sg.addColorStop(1, 'rgba(70,100,90,0.9)'); c.fillStyle = sg; c.beginPath(); c.moveTo(W * 0.35, hz + 2); c.lineTo(W * 0.65, hz + 2); c.lineTo(W * 1.1, H * 0.75); c.lineTo(-W * 0.1, H * 0.75); c.fill(); }
+  c.strokeStyle = 'rgba(255,220,160,0.07)'; c.lineWidth = 2;
+  for (let i = -6; i <= 6; i++) { c.beginPath(); c.moveTo(W / 2 + i * W * 0.02, hz); c.lineTo(W / 2 + i * W * 0.22, H); c.stroke(); }
+  c.fillStyle = 'rgba(30,20,10,0.3)';
+  for (let i = 0; i < 18; i++) { const y = hz + (H - hz) * Math.pow(((i * 53) % 17) / 17, 1.6), s = (y - hz) / (H - hz); ell(c, ((i * 71) % 97) / 97 * W, y, W * 0.02 * (0.3 + s), H * 0.006 * (0.3 + s)); c.fill(); }
+  if (env !== 'sea') for (const sd of [-1, 1]) { // dương xỉ tiền cảnh 2 góc
+    const bx = sd < 0 ? 0 : W;
+    for (let k = 0; k < 7; k++) {
+      const a = (sd < 0 ? -0.15 : Math.PI + 0.15) - sd * k * 0.17, len = H * (0.28 + 0.05 * Math.sin(k * 2));
+      c.strokeStyle = env === 'night' ? (k % 2 ? '#0c1a10' : '#12241a') : k % 2 ? '#1f3a1c' : '#2b4d24'; c.lineWidth = W * 0.012; c.lineCap = 'round';
+      const ex = bx + Math.cos(a - sd * 0.9) * len, ey = H - Math.abs(Math.sin(a - sd * 0.9)) * len;
+      c.beginPath(); c.moveTo(bx, H); c.quadraticCurveTo((bx + ex) / 2, ey - H * 0.05, ex, ey); c.stroke();
     }
   }
-  ctx.drawImage(r._dinoBg, 0, 0);
-  // khói núi lửa động
-  for (let i = 0; i < 5; i++) {
+}
+export function drawDinoBg(r, t, env = 'plains') {
+  const { ctx, W, H } = r, hz = H * 0.42;
+  const key = `${W}x${H}:${env}`;
+  r._dinoBgs ||= {};
+  let cv = r._dinoBgs[key];
+  if (!cv) { cv = document.createElement('canvas'); cv.width = W; cv.height = H; paintBg(cv.getContext('2d'), W, H, env); r._dinoBgs = { [key]: cv }; }
+  ctx.drawImage(cv, 0, 0);
+  if (env === 'plains' || env === 'night') for (let i = 0; i < 5; i++) { // khói núi lửa
     const k = ((t * 0.08 + i / 5) % 1), x = W * (0.73 + k * 0.05 * Math.sin(i)), y = hz - H * (0.25 + k * 0.25);
     ctx.fillStyle = `rgba(60,40,60,${0.35 * (1 - k)})`; ell(ctx, x, y, W * (0.02 + k * 0.05), H * (0.02 + k * 0.04)); ctx.fill();
   }
+  if (env === 'sea') for (let i = 0; i < 6; i++) { const y = hz + H * (0.03 + i * 0.03); ctx.strokeStyle = `rgba(255,255,255,${0.25 - i * 0.03})`; ctx.lineWidth = 2; ctx.beginPath(); for (let x = 0; x <= W; x += W / 40) ctx.lineTo(x, y + Math.sin(x * 0.03 + t * 2 + i) * 3); ctx.stroke(); }
+}
+/** Lớp mặt nước PHÍA TRƯỚC (che phần thân dưới của cá sấu / mosasaur; khủng long trên cạn lội nước nông). */
+export function drawWaterFront(r, t, env, level) {
+  if (env !== 'river' && env !== 'sea') return;
+  const { ctx, W, H } = r, y0 = H * level;
+  const g = ctx.createLinearGradient(0, y0, 0, H);
+  if (env === 'sea') { g.addColorStop(0, 'rgba(60,150,200,0.85)'); g.addColorStop(1, 'rgba(20,70,120,0.95)'); } else { g.addColorStop(0, 'rgba(90,120,105,0.85)'); g.addColorStop(1, 'rgba(40,60,50,0.95)'); }
+  ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, H);
+  for (let x = 0; x <= W; x += W / 48) ctx.lineTo(x, y0 + Math.sin(x * 0.02 + t * 2.2) * H * 0.006 + Math.sin(x * 0.007 - t) * H * 0.008);
+  ctx.lineTo(W, H); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2; ctx.beginPath();
+  for (let x = 0; x <= W; x += W / 48) ctx.lineTo(x, y0 + Math.sin(x * 0.02 + t * 2.2) * H * 0.006 + Math.sin(x * 0.007 - t) * H * 0.008);
+  ctx.stroke();
+}
+/** Vật bay tới: đá, mảnh vụn, cá, thằn lằn. */
+export function drawProjectile(ctx, kind, x, y, r, t) {
+  if (kind === 'fish') {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(Math.sin(t * 12) * 0.4);
+    const g = ctx.createLinearGradient(0, -r, 0, r); g.addColorStop(0, '#5f8fb0'); g.addColorStop(1, '#d8e8f0');
+    ell(ctx, 0, 0, r * 1.2, r * 0.55); ctx.fillStyle = g; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(r * 1.05, 0); ctx.lineTo(r * 1.7, -r * 0.55); ctx.lineTo(r * 1.7, r * 0.55); ctx.fillStyle = '#4a7a9a'; ctx.fill();
+    ell(ctx, -r * 0.7, -r * 0.12, r * 0.12, r * 0.12); ctx.fillStyle = '#111'; ctx.fill(); ctx.restore(); return;
+  }
+  if (kind === 'lizard') {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(t * 6);
+    ctx.strokeStyle = '#3f8a3a'; ctx.lineWidth = r * 0.45; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-r, 0); ctx.quadraticCurveTo(0, -r * 0.5, r, 0); ctx.stroke();
+    ctx.lineWidth = r * 0.18; for (const sx of [-0.4, 0.4]) { ctx.beginPath(); ctx.moveTo(r * sx, 0); ctx.lineTo(r * sx - r * 0.2, r * 0.5); ctx.moveTo(r * sx, 0); ctx.lineTo(r * sx + r * 0.2, -r * 0.6); ctx.stroke(); }
+    ctx.restore(); return;
+  }
+  drawRock(ctx, x, y, r * (kind === 'debris' ? 0.8 : 1), t, kind === 'debris' ? ['#a08060', '#4a3420'] : undefined);
 }
 
 /** Tảng đá bay tới (z: 1 xa → 0 sát mặt). */
-export function drawRock(ctx, x, y, r, t) {
+export function drawRock(ctx, x, y, r, t, cols = ['#b9b2a6', '#4b443c']) {
   ctx.save(); ctx.translate(x, y); ctx.rotate(t * 3);
   ctx.beginPath();
   for (let i = 0; i < 9; i++) { const a = (i / 9) * TAU, rr = r * (0.82 + 0.18 * Math.sin(i * 2.3)); i ? ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); }
   ctx.closePath();
-  const g = ctx.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.1, 0, 0, r); g.addColorStop(0, '#b9b2a6'); g.addColorStop(1, '#4b443c');
+  const g = ctx.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.1, 0, 0, r); g.addColorStop(0, cols[0]); g.addColorStop(1, cols[1]);
   ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = '#2b2620'; ctx.lineWidth = r * 0.06; ctx.stroke();
   ctx.restore();
 }

@@ -13,7 +13,7 @@ import { PlayerTracker, torsoSignature } from './players.js';
 import { TileGame, TileGeom } from './tiles.js';
 import { Cutouts } from './cutout.js';
 import { FruitGame } from './fruits.js';
-import { DinoGame } from './dino.js';
+import { DinoGame, RESP, STAGES } from './dino.js';
 import { PresenceGate } from './personcheck.js';
 
 const $ = id => document.getElementById(id);
@@ -593,7 +593,7 @@ async function resume() {
 }
 function toMenu() {
   setMode('menu'); setHint(''); big(''); $('hud').hidden = true; releaseWakeLock();
-  stopCamera(); video.classList.remove('on'); app.pts = null; app.game = null; app.tg = null; app.fg = null; app.dg = null; ui.hud = null; ui.tiles = null; ui.fruit = null; ui.dino = null;
+  stopCamera(); video.classList.remove('on'); app.pts = null; app.game = null; app.tg = null; app.fg = null; app.dg = null; ui.hud = null; ui.tiles = null; ui.fruit = null; ui.dino = null; ui.fact = null;
   ui.panel = link.live ? { title: 'AR Obstacle Runner', lines: ['Chọn chế độ chơi trên điện thoại'] } : null;
   renderer.clear(); show('scr-menu');
 }
@@ -604,7 +604,6 @@ function manualAction(kind) {
   if (isFruit()) return; // Chém trái cây: kéo ngón tay / chuột trên màn hình để chém
   if (isDino()) { // Đấu khủng long bằng phím: ← → né (tự về giữa), ↓ ngồi, ↑ / H đỡ; kéo chuột để đánh
     if (kind === 'left' || kind === 'right') { m.lane = kind === 'left' ? 0 : 2; clearTimeout(tm.lane); tm.lane = setTimeout(() => { m.lane = 1; }, 650); return; }
-    if (kind === 'jump') kind = 'hands';
   }
   if (isTiles() && app.geom) { // Ô an toàn bằng phím: ←→ đổi cột, ↑↓ đổi hàng (↑ = xa camera)
     const g = app.geom;
@@ -998,14 +997,18 @@ function fruitOver() {
 // ---------------- Game "Đấu khủng long" ----------------
 const DINO_HANDS = { L: '#ffd23f', R: '#ff5a3c', M: '#ffb347' };
 function newDino() {
-  app.dg = new DinoGame({ W: renderer.W, H: renderer.H, seed: (Math.random() * 2 ** 31) | 0, lagMs: lagMs() });
+  // chơi tiếp từ màn đã tới lần trước (đủ mạng); ?dstage=N để chọn màn
+  const st = params.has('dstage') ? +params.get('dstage') : store.get('dinoStage', 0);
+  app.dg = new DinoGame({ W: renderer.W, H: renderer.H, seed: (Math.random() * 2 ** 31) | 0, lagMs: lagMs(), stage: st || 0 });
   app.hands = {}; app.arm = {}; app.fslots = [{}, {}]; app.dinoRef = null; app.dinoLost = 0; app.rated = false;
   document.querySelectorAll('.fb').forEach(b => { b.disabled = false; });
   ui.dino = dinoUi(); ui.hud = null; ui.tiles = null; ui.fruit = null;
 }
 function dinoUi() {
   const g = app.dg, d = g.dino;
-  return { name: d.name, boss: d.key === 'trex', hp: d.hp, maxHp: d.maxHp, wave: g.wave, level: g.level, lives: g.lives, maxLives: g.cfg.lives,
+  const broken = Object.values(d.parts || {}).filter(p => p.broken).map(p => `${p.name} gãy`).join(', ');
+  return { name: d.name, boss: d.boss, rage: d.rage, hp: d.hp, maxHp: d.maxHp, wave: g.wave, level: g.level, lives: g.lives, maxLives: g.cfg.lives,
+    stage: STAGES[g.stage].name, inStage: g.inStage, stageLen: STAGES[g.stage].roster.length, parts: broken,
     score: g.score, combo: g.combo, mult: g.mult, best: store.get('bestDino', 0), padRight: !tvOut() };
 }
 /** Đầu vào: tay (giống Chém trái cây: theo hướng vươn tay so với vai), né = lệch người khỏi chỗ đứng gốc, ngồi, giơ 2 tay. */
@@ -1013,7 +1016,7 @@ function dinoInput(now) {
   const s = motion.state, dg = app.dg;
   if (app.input !== 'camera') {
     const m = app.manual;
-    return { hands: pointerHands(now).map(h => Object.assign(h, { color: DINO_HANDS.M })), dodge: m.lane - 1, duck: m.ducking, guard: m.handsUp, present: true };
+    return { hands: pointerHands(now).map(h => Object.assign(h, { color: DINO_HANDS.M })), dodge: m.lane - 1, duck: m.ducking, jump: m.airborne, guard: m.handsUp, present: true };
   }
   const pl = s.present ? fruitPlace(app.raw, now, app.fslots[0], 0.5) : null;
   const hands = pl ? cameraHands(pl, now).map(h => Object.assign(h, { color: DINO_HANDS[h.id] || '#fff' })) : [];
@@ -1024,13 +1027,13 @@ function dinoInput(now) {
   else if (!busy) app.dinoRef += (s.laneX - app.dinoRef) * Math.min(1, (now - (app.dinoRefT || now)) / 2500);
   app.dinoRefT = now;
   const off = s.laneX - app.dinoRef, dodge = off > 0.09 ? 1 : off < -0.09 ? -1 : 0;
-  return { hands, dodge, duck: s.ducking, guard: s.handsUp, present: s.present };
+  return { hands, dodge, duck: s.ducking, jump: s.airborne, guard: s.handsUp, present: s.present };
 }
 function dinoView(now, live = true, inp = null) {
   const it = app.input === 'camera' ? app.cutouts.items[app.mainIdx] : null;
   let skel = null;
   if (!it && app.raw) skel = app.raw.map(q => ({ x: renderer.mirror ? 1 - q.x : q.x, y: q.y, v: q.v }));
-  const react = inp ? (inp.dodge < 0 ? '⬅ NÉ' : inp.dodge > 0 ? 'NÉ ➡' : inp.duck ? '⬇ NGỒI' : inp.guard ? '🙌 ĐỠ' : '') : '';
+  const react = inp ? (inp.jump ? '⬆ NHẢY' : inp.dodge < 0 ? '⬅ NÉ' : inp.dodge > 0 ? 'NÉ ➡' : inp.duck ? '⬇ NGỒI' : inp.guard ? '🙌 ĐỠ' : '') : '';
   return { hands: live && inp ? inp.hands : Object.values(app.hands), pip: app.input === 'camera' ? { it, skel } : null, react, lost: !!inp && !inp.present };
 }
 function dinoCountdownFrame(now, dt) {
@@ -1049,24 +1052,34 @@ function dinoFrame(now, dt) {
   if (!lost) dg.update(dt, inp);
   for (const ev of dg.drain()) onDinoEvent(ev);
   const d = dg.dino;
-  ui.cue = d.phase === 'windup' && d.attack ? {
-    action: { move: 'move', duck: 'duck', guard: 'hands', smash: 'smash' }[d.attack.need], dir: d.attack.dir, t: d.t * 1.3 / d.windup,
-    label: d.attack.label, say: d.attack.need === 'guard' ? 'GIƠ 2 TAY ĐỠ' : null } : null;
+  // gợi ý theo PHẢN ỨNG (màu + icon + chữ); giả đòn hiện y như đòn thật để "nhử"
+  const cur = d.phase === 'attack' ? d.cur : null;
+  if (cur && d.curTo > -0.1) {
+    const nd = cur.fake ? 'dodge' : cur.need, R = RESP[nd] || RESP.dodge;
+    ui.cue = nd === 'none' ? null : { color: R.color, icon: R.icon, say: R.say, arrow: nd === 'dodge', dir: cur.dir, t: 1.3 * Math.max(0, d.curTo) / Math.max(0.3, cur.tele), label: d.atk.label };
+  } else ui.cue = null;
   ui.dino = dinoUi();
   renderer.dinoScene(dt, now / 1000, dg, dinoView(now, true, { ...inp, present: !lost }));
   if (dg.over) dinoOver();
 }
+const REACT_SFX = { dodge: 'cue_move', jump: 'cue_jump', duck: 'cue_duck', guard: 'cue_hands', hold: 'cue_hands', smash: 'tick' };
 function onDinoEvent(ev) {
   const r = renderer;
   switch (ev.kind) {
-    case 'enter': big(ev.boss ? `👑 ${ev.name}!` : ev.name); sfx.roar(); if (ev.boss) r.shake = 8; break;
-    case 'windup': if (ev.attack.kind === 'roar' || ev.attack.kind === 'bite') sfx.roar();
-      (ev.attack.need === 'move' ? sfx.cue_move : ev.attack.need === 'duck' ? sfx.cue_duck : ev.attack.need === 'guard' ? sfx.cue_hands : sfx.cue_jump)?.(); break;
-    case 'strike': r.shake = 10; break;
+    case 'stage': big(ev.cleared ? 'QUA MÀN! +1 ♥' : `Màn ${ev.stage + 1}`); ui.fact = { text: `🌍 ${ev.name}${ev.level > 1 ? ` · Vòng ${ev.level}` : ''}`, at: performance.now() }; store.set('dinoStage', ev.stage); break;
+    case 'enter': setTimeout(() => big(ev.boss ? `👑 ${ev.name}!` : ev.name), ev.wave === 1 ? 1000 : 0); sfx.roar(); if (ev.boss) r.shake = 8; ui.fact = { text: `🦴 Bạn có biết? ${ev.note}`, at: performance.now() + 900 }; break;
+    case 'windup': if (['roar', 'bite', 'chop'].includes(ev.attack.tmpl)) sfx.roar(); sfx[REACT_SFX[ev.attack.need]]?.(); break;
+    case 'strike': r.shake = Math.max(r.shake || 0, 8); break;
+    case 'feint': sfx.ok(); r.popup(r.W / 2, r.H * 0.5, 'GIẢ ĐÒN! 😏', '#9aa4b8', 1.3); break;
+    case 'react': r.popup(r.W / 2, r.H * 0.56, ev.grade === 'perfect' ? 'PERFECT!' : 'TỐT', ev.grade === 'perfect' ? '#ffd23f' : '#7dffb0', ev.grade === 'perfect' ? 1.5 : 1.1); if (ev.grade === 'perfect') sfx.star(); break;
     case 'hit': sfx.coin(); r.burst(ev.x, ev.y, ev.gold ? '#ffd23f' : '#ff3b6b', ev.gold ? 30 : 18); r.popup(ev.x, ev.y - 30 * r.u, ev.gold ? `CHÍ MẠNG −${ev.dmg}` : `−${ev.dmg}`, ev.gold ? '#ffd23f' : '#fff', ev.gold ? 1.3 : 1); buzz(25); break;
-    case 'smash': sfx.coin(); r.burst(ev.x, ev.y, '#b9b2a6', 22); r.popup(ev.x, ev.y, 'BỐP!', '#ffb347'); break;
-    case 'dodged': sfx.star(); r.popup(r.W / 2, r.H * 0.55, { move: 'Né đẹp!', duck: 'Cúi kịp!', guard: 'Đỡ chắc!', smash: 'Đập sạch!' }[ev.attack.need] + ' Phản công!', '#7dffb0', 1.4); break;
+    case 'smash': sfx.coin(); r.burst(ev.x, ev.y, ev.proj === 'fish' ? '#8fc8e8' : ev.proj === 'lizard' ? '#5fa84a' : '#b9b2a6', 22); r.popup(ev.x, ev.y, 'BỐP!', '#ffb347'); break;
+    case 'dodged': r.popup(r.W / 2, r.H * 0.66, 'Phản công!', '#7dffb0', 1.2); break;
     case 'hurt': sfx.hit(); r.claw = 1; r.shake = 18; r.flash = 0.6; r.flashColor = '200,0,0'; buzz([90, 40, 160]); break;
+    case 'rage': sfx.roar(); big(ev.level === 2 ? 'ĐIÊN CUỒNG!' : 'NỔI GIẬN!'); r.shake = 12; break;
+    case 'tired': r.popup(r.W / 2, r.H * 0.45, 'THỞ DỐC — ĐÁNH ĐI! 💨', '#ffd23f', 1.4); break;
+    case 'rest': r.popup(r.W / 2, r.H * 0.45, 'Nó đang thị uy — đánh tự do!', '#7dffb0', 1.1); sfx.roar(); break;
+    case 'break': sfx.star(); r.burst(ev.x, ev.y, '#fff2d0', 36); r.popup(ev.x, ev.y, `GÃY ${ev.name.toUpperCase()}!`, '#fff2d0', 1.5); r.shake = 10; break;
     case 'down': sfx.star(); big('HẠ GỤC!'); r.popup(r.W / 2, r.H * 0.4, `+${ev.bonus}`, '#ffd23f', 1.6); r.burst(r.W / 2, r.H * 0.8, '#c8a878', 40); break;
   }
 }
@@ -1075,7 +1088,7 @@ function dinoOver() {
   setMode('over'); releaseWakeLock(); sfx.over(); ui.cue = null;
   let best = store.get('bestDino', 0); const record = g.score > best && g.score > 0; best = Math.max(best, g.score); store.set('bestDino', best);
   const title = `Bạn đã gục! ${g.score} điểm`;
-  const detail = `Hạ ${g.kills} khủng long · đánh trúng ${g.hits} · né/đỡ ${g.blocks} · chuỗi dài nhất ${g.bestCombo}`;
+  const detail = `${STAGES[g.stage].name} · hạ ${g.kills} con · trúng ${g.hits} · né/đỡ ${g.blocks} (${g.perfects} PERFECT) · bẻ gãy ${g.breaks} · chuỗi ${g.bestCombo}`;
   $('over-score').textContent = g.score; $('over-detail').textContent = detail; $('over-best').textContent = record ? '🏆 Kỷ lục mới!' : `Kỷ lục: ${best}`;
   $('over-hands').textContent = app.input === 'camera' ? 'hoặc giơ 2 tay 1.5 giây để chơi lại' : '';
   ui.panel = { title, color: '#ff7b2c', lines: [detail, record ? '🏆 Kỷ lục mới!' : `Kỷ lục: ${best}`, app.input === 'camera' ? '🙌 Giơ 2 tay 1.5 giây để chơi lại' : 'Enter / bấm Chơi lại'] };
@@ -1093,7 +1106,7 @@ window.addEventListener('pointerup', () => { if (app.ptr) app.ptr.down = false; 
 const GAME_DESC = {
   runner: 'Bước né tường, nhảy qua hố lửa, ngồi tránh laser, giơ tay hái sao. 1 người.',
   tiles: 'Sàn nhà thành lưới ô. Hết giờ phải đứng trên Ô XANH — ô đỏ là hố lửa! Ô đổi ngẫu nhiên mỗi vòng. 1–4 người, người trụ lại cuối cùng thắng.',
-  dino: 'Khủng long lao tới, nhìn thẳng vào bạn! Vung tay đánh điểm yếu đang sáng; khi nó gồng đỏ thì NÉ sang bên, NGỒI xuống, GIƠ 2 TAY đỡ hoặc ĐẬP đá bay tới. 4 loài, T-Rex là trùm. 1 người.',
+  dino: '16 loài khủng long qua 4 màn lao tới nhìn thẳng vào bạn! Đánh điểm yếu; màn hình tô màu báo việc phải làm: ĐỎ né · VÀNG nhảy · TÍM ngồi · XANH giơ 2 tay · TRẮNG đập đá. Có combo, giả đòn, bầy đàn, trùm. 1 người.',
   fruit: 'Vung 2 tay chém trái cây rơi từ trên xuống, né bom. Đưa tay cao hơn đầu một chút là lưỡi chém đã chạm đỉnh màn hình — không cần với cao. 75 giây, 1–2 người (2 người đứng vào khung = đối kháng).',
 };
 function renderGameSel() {

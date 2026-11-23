@@ -6,7 +6,7 @@ Game vận động kiểu console cho phòng khách: **điện thoại = máy ch
 - 🏃 **Vượt chướng ngại** (1 người): bước né tường, nhảy qua hố lửa / rào, ngồi tránh laser, giơ tay hái sao.
 - 🔥 **Ô an toàn** (1–4 người): sàn trước camera thành lưới ô, mỗi vòng ô xanh/đỏ đổi ngẫu nhiên; hết giờ phải đứng trên ô xanh, ô đỏ là hố lửa. Người trụ lại cuối cùng thắng.
 - 🍉 **Chém trái cây** (1–2 người, 2 người = đối kháng): vung 2 tay chém trái rơi từ trên xuống, né bom; người thu nhỏ ở đáy, lưỡi chém theo hướng vươn tay nên không cần với cao.
-- 🦖 **Đấu khủng long** (1 người): khủng long lao tới nhìn thẳng vào bạn — vung tay đánh điểm yếu, né / ngồi / giơ 2 tay đỡ / đập đá theo đòn của từng loài; T-Rex là trùm.
+- 🦖 **Đấu khủng long** (1 người): 16 loài qua 4 màn lao tới nhìn thẳng vào bạn — đánh điểm yếu; màu báo việc phải làm (đỏ né · vàng nhảy · tím ngồi · xanh giơ tay · trắng đập); combo, giả đòn, bầy đàn, khoá sừng, trùm cuối màn.
 
 **Chơi ngay trên điện thoại (không cần TV):** dựng máy dọc ngang tầm mắt, đứng gần ~1–1,5 m — game tự dùng khung nửa người (chỉ cần thấy đầu tới hông). Gợi ý động tác hiện thành viền màu + mũi tên lớn + âm báo nên không cần nhìn kỹ màn hình.
 
@@ -33,7 +33,8 @@ js/levels.js          ★ bản đồ chướng ngại vật (chunk)
 js/tiles.js           ★ game Ô an toàn: lưới ô phối cảnh, vòng chơi, độ khó, mạng, loại
 js/fruits.js          ★ game Chém trái cây: rơi, chém (đoạn thẳng cắt hình tròn + tốc độ tay), bom, combo
 js/dino.js            ★ game Đấu khủng long: loài, đòn tấn công, cửa sổ phản ứng có bù trễ, điểm yếu, đá bay
-js/dinodraw.js        ★ vẽ khủng long chính diện + nền tiền sử bằng Canvas 2D
+js/dinodraw.js        ★ biên đạo động tác theo mẫu đòn + nền 5 cảnh (rừng, sông, biển, hoàng hôn, đêm)
+js/dinospecies.js     ★ vẽ 12 loài mới chính diện; js/dinokit.js: bộ dụng cụ vẽ dùng chung
 js/personcheck.js     ★ lọc người giả (đồ vật bị nhận nhầm)
 js/cutout.js          tách người khỏi nền bằng mặt nạ MediaPipe (để thu nhỏ / đặt vào khung cảnh game)
 js/players.js         theo dõi tối đa 4 người (gán ID giữa các khung hình, điểm chân trên sàn)

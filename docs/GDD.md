@@ -70,22 +70,19 @@ Thời lượng phiên ngắn là cố ý: vận động toàn thân mệt nhanh
 - **Lưỡi chém (v0.8):** vệt sáng thon — đuôi nhọn, thân dày theo tốc độ vung, đầu bo; nội suy Catmull-Rom (điểm tay từ camera thưa); dài tối đa 30% chiều cao, giữ 0,22 s đường tay gần nhất; tay đứng yên chỉ còn vòng rỗng mờ.
 - **2 người đối kháng (v0.8):** có 2 người trong khung lúc bắt đầu → tự vào chế độ 2 người (chọn 2 người vai rộng nhất = gần camera nhất, xếp trái → phải thành P1 xanh / P2 cam, giữ ID 15 s khi khuất). Mỗi người một hình nhỏ ở đáy theo chỗ đứng thật (cách nhau ≥ 30% màn hình), nhãn P1/P2 trên đầu, 2 lưỡi chém mỗi người. Chung bầu trời, chung đồng hồ; **điểm riêng**, ai nhiều hơn thắng. Bom: −5 điểm + choáng 1,2 s (lưỡi xám, không chém được) thay vì mất mạng. Nhiều trái hơn (+1 mỗi đợt, tối đa 12 trên trời); tầm ngang lưỡi chém 0,55 W (1 người: 0,65 W).
 
-## 3d. Game thứ tư — "Đấu khủng long" (1 người)
-- **Player fantasy:** đứng mặt đối mặt với khủng long — nó nhìn thẳng vào bạn, gầm, lao tới; bạn né, cúi, đỡ rồi phản đòn.
-- **Góc nhìn thứ nhất:** khủng long đi từ chân trời tới (to dần), **quay mặt thẳng vào màn hình** (vẽ chính diện bằng Canvas 2D thuần, không cần ảnh). Người chơi chính là "camera"; khung nhỏ **BẠN** góc trái dưới hiện người thật (đã tách nền) để biết mình đang né / ngồi / đỡ.
-- **Đánh:** điểm yếu đỏ sáng lần lượt hiện trên người khủng long (đầu, ngực, vai…, sống 1,7 s); vung tay nhanh (> 0,8 × H/s) qua điểm yếu = −1 máu. Tay ánh xạ giống Chém trái cây (theo hướng vươn tay so với vai) nên không cần với ra khỏi khung camera.
-- **Bị tấn công (báo trước 1,15–1,35 s: khủng long đỏ rực, gồng, mắt đỏ, chữ hướng dẫn to + âm báo):**
-  | Đòn | Loài | Phản ứng |
-  |---|---|---|
-  | Cắn / Húc | Raptor, T-Rex / Ba sừng | **NÉ** sang hướng mũi tên (bước hoặc nghiêng người ≥ 9% bề ngang khung so với chỗ đứng gốc) |
-  | Vồ / Hất sừng / Lao xuống / Quật đuôi | Raptor / Ba sừng / Thằn lằn bay / T-Rex | **NGỒI** |
-  | Gầm (sóng âm) | T-Rex | **GIƠ 2 TAY** đỡ |
-  | Ném đá | Thằn lằn bay | **ĐẬP** 3 tảng đá bay tới bằng tay |
-  Cửa sổ chấp nhận: sớm 0,35 s, muộn 0,12 s **sau khi đã bù độ trễ màn hình** (đo ở bài đo độ trễ). Chỗ đứng gốc trôi chậm theo người chơi khi không bị tấn công → không phải đứng đúng giữa khung.
-- **Động tác (v1.1):** khủng long có khớp nối — chân bước luân phiên (T-Rex / Ba sừng dậm rung màn hình, tung bụi), thân nhún, đầu / hàm / tay / đuôi / cánh cử động riêng. Mỗi đòn 3 nhịp: **lấy đà** (ngả đầu ra sau & sang phía ngược lại, run bần bật, cào đất, nhún rình, bay vọt lên, ngửa cổ hít hơi, xoay người…) → **ra đòn** bắt đầu trước lúc chốt 0,22 s để hình *chạm* đúng lúc tính né/đỡ (đầu phóng to lao sang ngang mặt rồi ĐỚP khép hàm, chồm vồ kèm vết móng cào, lao cả thân húc, hất sừng, cụp cánh bổ nhào, gầm sóng âm, quật đuôi quét ngang) → **thu về**. Trúng đòn thì giật đầu, nheo mắt; choáng thì lảo đảo; gục thì khuỵu chân đổ nghiêng.
-- **Phản công:** né / đỡ đúng → khủng long choáng 1,3 s, hiện **điểm yếu vàng ×2** to.
-- **Tiến trình:** Raptor (6 máu) → Ba sừng (9) → Thằn lằn bay (7) → T-Rex trùm (14); hết 4 con sang vòng mới: máu +40%, gồng / nghỉ nhanh ×0,88. 5 mạng, bất tử 1 s sau khi trúng đòn. Mất dấu người > 0,8 s → khủng long đứng chờ.
-- **Điểm:** trúng 10 × sát thương, né / đỡ 5, đập đá 5 — nhân chuỗi ×1 → ×4 (mỗi 5 lần đúng liên tiếp +1); hạ gục +50 × vòng (trùm ×2).
+## 3d. Game thứ tư — "Đấu khủng long" (1 người) — v2 theo nghiên cứu (docs/NGHIEN_CUU_KHUNG_LONG.md)
+- **Góc nhìn thứ nhất:** khủng long đi từ chân trời tới, quay mặt thẳng vào màn hình (vẽ chính diện bằng Canvas 2D, khớp nối từng bộ phận). Khung **BẠN** góc trái dưới hiện người thật.
+- **Roster 16 loài / 4 màn** (theo nơi tìm thấy hoá thạch; núi lửa chỉ trang trí): Rừng Jura (Compsognathus, Dilophosaurus, Stegosaurus, 👑 Allosaurus) → Sông kỷ Phấn trắng (Parasaurolophus, Deinosuchus, Pachycephalosaurus, 👑 Spinosaurus) → Biển nội địa (Pteranodon, Quetzalcoatlus, 👑 Mosasaurus) → Hell Creek (Velociraptor [đêm], Triceratops, Ankylosaurus, Carnotaurus, 👑 T-Rex). Hết 4 màn → vòng mới: máu +35%, nhịp ×0,9. Qua màn +1 mạng; thua thì chơi tiếp từ màn đang tới.
+- **Ngữ pháp quỹ đạo (mọi loài như nhau):** hướng & độ cao đòn quyết định phản ứng — đâm/bổ/húc/mổ/phóng khỏi nước → **NÉ** (đỏ, mũi tên; nửa màn bị đánh tô đỏ) · đòn thấp (chùy đuôi, cắn chân, sóng giậm) → **NHẢY** (vàng, dải thấp) · ngang đầu/vồ/bổ nhào → **NGỒI** (tím, dải cao) · gầm/gió/sóng/húc giữa → **GIƠ 2 TAY** (xanh) · khoá sừng → **GIỮ 2 TAY** ≥ 60% thời gian giằng co · vật bay → **ĐẬP** (trắng). Mã hoá 3 lớp: màu + icon/chữ + âm báo riêng.
+- **Đòn = chuỗi nhát** có thời điểm chạm riêng: đòn đơn, kép (đổi hướng), liên hoàn 3 nhát, bầy (≤3 con, 3 làn, lệch 0,55 s — compy cắn chân → nhảy; raptor từ bên → né sang bên kia, từ giữa → ngồi), vật bay (đá, mảnh vụn, cá, thằn lằn), đòn kèm theo (Stegosaurus quất rồi đâm; T-Rex giậm rồi văng đá).
+- **Biên đạo theo mẫu** (bite/chop/peck/charge/ram/leap/sweepLow/stomp/snapLow/sweepHigh/swipe/pounce/dive/roar/gust/wave/butt/lock/throw/mob/myth/display): lấy đà → ra đòn bắt đầu trước lúc chạm 0,22 s → thu về. Hiệu ứng: vật quét thấp/cao chạy ngang màn, sóng xung kích, tường nước/bụi, vòng sóng âm, vết móng cào, thanh giằng co.
+- **Phase:** ≤50% máu NỔI GIẬN (combo 2 nhát, mở đòn mới, điểm yếu dời chỗ, giả đòn) · ≤25% ĐIÊN CUỒNG (combo 3, nghỉ ngắn hơn, viền đỏ). Combo ≥3 nhát né sạch → **THỞ DỐC** 3 s (điểm vàng to). Sau ~26 s căng thẳng → **nhịp nghỉ** 3,6 s: nó thị uy (phô buồm/mào/phiến), đánh tự do.
+- **Giả đòn** (có lý do sinh học: doạ/phô diễn): chỉ cho NÉ/ĐỠ, không giả NHẢY/NGỒI; ≤1 lần/4 đòn trừ loài "doạ giả" (Dilophosaurus, Mosasaurus lặn đánh lừa); có tín hiệu "nhả đòn" (tiếng + chữ GIẢ ĐÒN!).
+- **Chống lặp:** 1 đòn ≤2 lần liền; 1 phản ứng ≤2 lần liền; ≤3 NHẢY/NGỒI trong 6 phản ứng gần nhất; cấm NHẢY → NGỒI → NHẢY; sau NGỒI thêm 0,5 s trước đòn thấp; khoảng trung tính 0,55 s giữa các nhát.
+- **Bộ phận gãy (có cơ sở hoá thạch):** sừng Triceratops (đánh điểm yếu sừng / thắng khoá sừng) → mất đòn HẤT SỪNG; gai đuôi Stegosaurus → mất đòn ĐÂM GAI.
+- **Mỗi loài một cách hạ:** chỗ hở sau khi né/đỡ ở đúng vị trí loài (hàm T-Rex, cổ Stegosaurus khi đuôi quay về, sườn Carnotaurus trượt quá đà 2,3 s, cổ họng Mosasaurus nằm trên mặt nước…).
+- **Chấm điểm & độ khó:** cửa sổ sớm 0,45 s, muộn 0,12 s sau khi bù trễ màn hình; vừa chuyển tư thế trong 0,32 s cuối = PERFECT (8 điểm), đứng sẵn = TỐT (5). Độ khó tự chỉnh: nhắm ~78% phản ứng đúng → báo trước ×0,82…×1,3; combo/giả đòn chỉ mở khi chơi tốt.
+- **"Bạn có biết?"**: mỗi loài 1 dòng khoa học gắn nhãn [BC] bằng chứng / [GT] giả thuyết / [TK] thiết kế / [HUYỀN THOẠI] (vd. Dilophosaurus không có diềm, không phun độc — có gag diềm bật ra rồi xẹp).
 
 ## 4. Bảng kinh tế điểm (tuning)
 | Biến | Gốc | Min | Max | Lý do |
@@ -112,6 +109,7 @@ Thời lượng phiên ngắn là cố ý: vận động toàn thân mệt nhanh
 
 ## Changelog
 - v0.1 (23/11/2026): bản đầu, 5 loại chướng ngại + sao, 3 tier, tutorial 6 bước.
+- v2.0 (23/11/2026): Đấu khủng long v2 — 16 loài / 4 màn, ngữ pháp quỹ đạo + mã màu theo phản ứng, NHẢY, combo, giả đòn, bầy đàn, khoá sừng, vật bay, phase giận/thở dốc/nghỉ, bộ phận gãy, chống lặp theo phản ứng, độ khó thích ứng, PERFECT/TỐT, "Bạn có biết?".
 - v1.1 (23/11/2026): Đấu khủng long — khủng long có động tác thật (bước đi, lấy đà, ra đòn, thu về) thay vì phóng to hình tĩnh.
 - v1.0 (23/11/2026): game thứ tư **Đấu khủng long** (góc nhìn thứ nhất, 4 loài vẽ chính diện, né / ngồi / đỡ / đập đá, phản công ×2).
 - v0.9.1 (23/11/2026): Ô an toàn — 2 người đứng sát nhau: ghép người theo vị trí dự đoán + màu áo, gán tối ưu cả nhóm, bỏ khung xương trùng, bỏ chân "lạc" sang người bên cạnh, lọc trung vị vị trí chân; chốt ô theo ô đứng nhiều nhất 0,35 s cuối, bị che lúc chốt thì dùng ô thấy gần nhất (≤ 1,5 s).

@@ -4,8 +4,9 @@ import { CONFIG } from './config.js';
 import { T } from './levels.js';
 import { SKELETON } from './pose.js';
 import { TileGeom } from './tiles.js';
-import { drawDino, drawDinoBg, drawRock, dinoPose } from './dinodraw.js';
-import { dinoBox } from './dino.js';
+import { drawDino, drawDinoBg, dinoPose, drawWaterFront, drawProjectile } from './dinodraw.js';
+import { dinoBox, RESP } from './dino.js';
+const hexA = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
 const clamp01 = x => Math.max(0, Math.min(1, x));
 
 const R = CONFIG.RENDER;
@@ -90,7 +91,7 @@ export class Renderer {
     if (!this.opaque) return;
     if (this.look === 'game') { this.bgGame(); return; }
     if (this.look === 'fruit') { this.bgFruit(); return; }
-    if (this.look === 'dino') { drawDinoBg(this, this.scroll || 0); return; }
+    if (this.look === 'dino') { drawDinoBg(this, this.scroll || 0, this.dinoEnv || 'plains'); return; }
     // Canvas tự vẽ nền (hình camera hoặc nền tối) thay vì để thẻ <video> bên dưới lộ ra: không phụ thuộc trình duyệt
     // ghép lớp (lỗi trên Android), và khi phát sang TV qua Wi-Fi thì TV nhận đúng canvas này.
     const v = this.video;
@@ -332,20 +333,31 @@ export class Renderer {
    */
   dinoScene(dt, tSec, dg, view) {
     const { ctx, W, H } = this, u = this.u;
-    this.scroll = tSec;
+    this.scroll = tSec; this.dinoEnv = dg.env;
     this.clear();
-    const d = dg.dino, key = d.key;
+    const d = dg.dino, key = d.key, env = dg.env;
+    const waterLv = env === 'sea' ? 0.8 : env === 'river' ? 0.86 : 0;
     // tư thế từng bộ phận + biến đổi toàn thân do biên đạo động tác tính (dinodraw.dinoPose)
     const B = dinoBox(W, H, key, d.z, d.sway);
     const pose = dinoPose(d, dg.clock, tSec, W, H), A = pose.A;
-    const sx = pose.sx, ox = pose.ox, oy = pose.oy, rot = pose.rot, alpha = d.phase === 'down' ? 1 - Math.max(0, (d.t - 0.9) / 0.9) : 1;
+    const { sx, ox, oy, rot } = pose, alpha = d.phase === 'down' ? 1 - Math.max(0, (d.t - 0.9) / 0.9) : 1;
     const focus = { x: B.x, y: B.y - B.h * pose.focusV };
-    let shake = pose.shake * u + (d.phase === 'windup' ? A.glow * 3 * u : 0);
-    // bước chân nặng (T-Rex, Ba sừng): rung màn hình + bụi mỗi lần dậm
-    if (pose.stomp && !this._stomped && (key === 'trex' || key === 'trike')) { this.shake = Math.max(this.shake || 0, key === 'trex' ? 6 : 4); this.burst(B.x + (Math.random() - 0.5) * B.w * 0.5, B.y, '#c8a878', 6); }
+    const cur = d.phase === 'attack' ? d.cur : null;
+    const need = cur && !cur.fake ? cur.need : cur?.fake ? 'dodge' : null, RC = need ? RESP[need].color : '#ff3b3b';
+    const winding = cur && d.curTo > 0, kTele = winding ? Math.max(0, Math.min(1, 1 - d.curTo / Math.max(0.3, cur.tele))) : 0;
+    let shake = pose.shake * u + kTele * 3 * u;
+    if (pose.stomp && !this._stomped && ['trex', 'trike', 'ankylo', 'stego', 'spino', 'parasaur', 'allo'].includes(key)) { this.shake = Math.max(this.shake || 0, key === 'trex' ? 6 : 4); this.burst(B.x + (Math.random() - 0.5) * B.w * 0.5, B.y, '#c8a878', 6); }
     this._stomped = pose.stomp;
-    const atk = d.attack;
-    // khủng long vẽ vào canvas đệm → tô sáng trắng khi trúng đòn / đỏ khi gồng mà không lem ra ngoài hình
+    // VÙNG NGUY HIỂM (tô theo phản ứng cần làm): NÉ → nửa bên bị đánh · NHẢY → dải thấp · NGỒI → dải cao · ĐỠ → viền xanh
+    if (winding && need && need !== 'smash' && need !== 'none' && !cur.fake) {
+      const a = 0.12 + 0.22 * kTele * (0.7 + 0.3 * Math.sin(tSec * 18));
+      ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = RC;
+      if (need === 'dodge') { const side = -cur.dir; ctx.fillRect(side < 0 ? 0 : W * 0.55, 0, W * 0.45, H); }
+      else if (need === 'jump') ctx.fillRect(0, H * 0.72, W, H * 0.28);
+      else if (need === 'duck') ctx.fillRect(0, 0, W, H * 0.42);
+      ctx.restore();
+    }
+    // khủng long vẽ vào canvas đệm → tô màu theo phản ứng khi gồng, trắng khi trúng đòn
     const oc = this._dinoCv || (this._dinoCv = document.createElement('canvas'));
     if (oc.width !== this.cv.width || oc.height !== this.cv.height) { oc.width = this.cv.width; oc.height = this.cv.height; }
     const c = oc.getContext('2d');
@@ -358,42 +370,80 @@ export class Renderer {
     c.restore();
     c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'source-atop';
     if (d.flash > 0) { c.fillStyle = `rgba(255,255,255,${0.75 * d.flash})`; c.fillRect(0, 0, oc.width, oc.height); }
-    else if (A.glow > 0 && d.phase === 'windup') { c.fillStyle = `rgba(255,30,0,${0.22 * A.glow * (0.7 + 0.3 * Math.sin(tSec * 30))})`; c.fillRect(0, 0, oc.width, oc.height); }
+    else if (winding && need !== 'none') { c.globalAlpha = 0.25 * kTele * (0.7 + 0.3 * Math.sin(tSec * 30)); c.fillStyle = RC; c.fillRect(0, 0, oc.width, oc.height); }
+    else if (d.phase === 'tired') { c.globalAlpha = 0.15 + 0.1 * Math.sin(tSec * 8); c.fillStyle = '#ffd23f'; c.fillRect(0, 0, oc.width, oc.height); }
     c.restore();
-    if (d.phase === 'windup') { // quầng đỏ phía sau khi gồng đòn
+    if (winding) { // quầng màu phía sau khi gồng
       const g = ctx.createRadialGradient(B.x, B.y - B.h * 0.5, B.h * 0.1, B.x, B.y - B.h * 0.5, B.h * 0.9);
-      g.addColorStop(0, `rgba(255,40,0,${0.35 * A.glow})`); g.addColorStop(1, 'rgba(255,40,0,0)');
+      g.addColorStop(0, hexA(RC, 0.35 * kTele)); g.addColorStop(1, hexA(RC, 0));
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     }
     ctx.save(); ctx.globalAlpha = alpha; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(oc, 0, 0); ctx.restore();
-    // đòn đặc biệt
-    const sT = d.hitAt != null && atk ? dg.clock - d.hitAt : 99; // thời gian kể từ lúc đòn chạm (không phụ thuộc pha logic)
-    if (atk?.kind === 'roar' && sT >= 0 && sT < 0.7) {
-      const k = Math.min(1, sT / 0.4);
-      for (let i = 0; i < 4; i++) {
-        const rr = (k + i * 0.25) % 1;
-        ctx.strokeStyle = `rgba(255,240,200,${0.6 * (1 - rr)})`; ctx.lineWidth = (6 + 20 * rr) * u;
-        ctx.beginPath(); ctx.arc(B.x, B.y - B.h * 0.85, H * (0.1 + rr * 0.9), 0, Math.PI * 2); ctx.stroke();
-      }
+    // bầy (compy / raptor / parasaur) chạy tới theo làn
+    for (const a of dg.adds || []) {
+      if (a.hit.done) continue; // đã lao qua
+      const k = 1 - a.z, ab = dinoBox(W, H, a.kind, Math.max(0, a.z * 0.9), 0);
+      const s = a.kind === 'compy' ? 0.55 : 0.6;
+      const bb = { ...ab, x: W / 2 + a.lane * W * (0.15 + 0.2 * k), w: ab.w * s, h: ab.h * s, y: ab.y + (a.kind === 'compy' ? H * 0.02 : 0) };
+      const ph = tSec * 12 + a.lane;
+      drawDino(ctx, a.kind, bb, { t: tSec, legL: Math.max(0, Math.sin(ph)), legR: Math.max(0, -Math.sin(ph)), bob: Math.abs(Math.sin(ph)) * 0.03, jaw: 0.3 + 0.6 * k, glow: k > 0.6 ? 1 : 0.3, headS: 1 + 0.5 * Math.max(0, k - 0.7), headY: a.hit.need === 'jump' ? 0.2 * k : 0 });
+      if (k > 0.3 && a.hit.need) { ctx.font = `900 ${Math.round(34 * u)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = RESP[a.hit.need].color; ctx.fillText(RESP[a.hit.need].icon, bb.x, bb.y - bb.h * 1.05); }
     }
-    if (atk?.kind === 'tail' && sT > -0.12 && sT < 0.45) { // đuôi khổng lồ quét ngang ngang tầm đầu (chạm đúng lúc chốt)
-      const k = Math.min(1, (sT + 0.12) / 0.45), x = W * (1.3 - 1.8 * k), y = H * 0.3;
+    if (waterLv) drawWaterFront(this, tSec, env, waterLv);
+    // hiệu ứng đòn đặc biệt (gắn với lúc chạm, không phụ thuộc pha logic)
+    const ls = d.lastStrike, sT = ls ? dg.clock - ls.at : 99, lt = ls?.hit?.tmpl;
+    const pre = cur && d.curTo < 0.25 && d.curTo > -0.05 ? cur : null, preT = pre ? -d.curTo : 99; // sắp chạm
+    const fxT = pre && !pre.fake ? preT : sT, fxTm = pre && !pre.fake ? pre.tmpl : lt;
+    if (fxTm === 'roar' && fxT > -0.05 && fxT < 0.7) {
+      const k = Math.min(1, Math.max(0, fxT) / 0.4);
+      for (let i = 0; i < 4; i++) { const rr = (k + i * 0.25) % 1; ctx.strokeStyle = `rgba(200,225,255,${0.6 * (1 - rr)})`; ctx.lineWidth = (6 + 20 * rr) * u; ctx.beginPath(); ctx.arc(B.x, B.y - B.h * 0.85, H * (0.1 + rr * 0.9), 0, Math.PI * 2); ctx.stroke(); }
+    }
+    if ((fxTm === 'sweepLow' || fxTm === 'sweepHigh') && fxT > -0.25 && fxT < 0.4) { // vật quét ngang: thấp (đuôi/chùy/sóng) hoặc cao (đuôi gai/diềm)
+      const k = Math.min(1, (fxT + 0.25) / 0.5), low = fxTm === 'sweepLow', y = low ? H * 0.86 : H * 0.26, x = W * (1.3 - 1.8 * k);
+      const colA = env === 'sea' || env === 'river' ? ['#7fb8d8', '#2f6f9a'] : key === 'ankylo' ? ['#9a7a54', '#4a3420'] : ['#6f9a4a', '#2f4a1e'];
       ctx.save(); ctx.translate(x, y);
-      const g = ctx.createLinearGradient(0, -H * 0.1, 0, H * 0.1); g.addColorStop(0, '#6f9a4a'); g.addColorStop(1, '#2f4a1e');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(-W * 0.05, 0); ctx.quadraticCurveTo(W * 0.3, -H * 0.16, W * 0.9, -H * 0.1); ctx.lineTo(W * 0.9, H * 0.12); ctx.quadraticCurveTo(W * 0.3, H * 0.14, -W * 0.05, 0); ctx.fill();
+      const g = ctx.createLinearGradient(0, -H * 0.1, 0, H * 0.1); g.addColorStop(0, colA[0]); g.addColorStop(1, colA[1]);
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(-W * 0.05, 0); ctx.quadraticCurveTo(W * 0.3, -H * 0.13, W * 0.9, -H * 0.09); ctx.lineTo(W * 0.9, H * 0.1); ctx.quadraticCurveTo(W * 0.3, H * 0.12, -W * 0.05, 0); ctx.fill();
+      if (key === 'ankylo' && low) { ctx.beginPath(); ctx.ellipse(-W * 0.02, 0, W * 0.06, H * 0.08, 0, 0, Math.PI * 2); ctx.fillStyle = '#5a4430'; ctx.fill(); }
+      if (key === 'stego' && !low) { ctx.fillStyle = '#efe6cf'; for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(-W * 0.02 + i * W * 0.03, -H * 0.04); ctx.lineTo(-W * 0.05 + i * W * 0.03, -H * 0.16); ctx.lineTo(i * W * 0.03, -H * 0.03); ctx.fill(); } }
       ctx.restore();
     }
-    if ((atk?.kind === 'pounce' || atk?.kind === 'bite' && key === 'raptor') && sT > -0.05 && sT < 0.3) { // vết móng cào ngang màn hình
-      const k = clamp01((sT + 0.05) / 0.25);
+    if ((fxTm === 'stomp' || fxTm === 'snapLow') && fxT > -0.02 && fxT < 0.5) { // sóng xung kích dưới đất
+      const k = Math.max(0, fxT) / 0.5;
+      ctx.strokeStyle = `rgba(255,220,150,${0.8 * (1 - k)})`; ctx.lineWidth = (14 - 10 * k) * u;
+      ctx.beginPath(); ctx.ellipse(W / 2, H * 0.95, W * (0.1 + 0.6 * k), H * (0.03 + 0.08 * k), 0, 0, Math.PI * 2); ctx.stroke();
+    }
+    if ((fxTm === 'swipe' || fxTm === 'pounce' || (fxTm === 'bite' && (key === 'raptor' || key === 'compy'))) && fxT > -0.05 && fxT < 0.3) { // vết móng cào
+      const k = Math.min(1, Math.max(0, (fxT + 0.05) / 0.25)), dirv = (pre || ls?.hit)?.dir || 0;
       ctx.save(); ctx.globalAlpha = 1 - k; ctx.strokeStyle = '#fff'; ctx.lineCap = 'round'; ctx.lineWidth = 9 * u;
-      for (let i = 0; i < 3; i++) { const x0 = W * (0.25 + i * 0.08) - (atk.dir || 0) * W * 0.1; ctx.beginPath(); ctx.moveTo(x0, H * 0.25); ctx.quadraticCurveTo(x0 + W * 0.12, H * 0.45, x0 + W * 0.3 * k, H * (0.3 + 0.5 * k)); ctx.stroke(); }
+      for (let i = 0; i < 3; i++) { const x0 = W * (0.25 + i * 0.08) - dirv * W * 0.1; ctx.beginPath(); ctx.moveTo(x0, H * 0.15); ctx.quadraticCurveTo(x0 + W * 0.12, H * 0.3, x0 + W * 0.3 * k, H * (0.2 + 0.25 * k)); ctx.stroke(); }
       ctx.restore();
     }
-    if (d.phase === 'counter') { // choáng: sao quay quanh đầu
-      for (let i = 0; i < 3; i++) { const a = tSec * 4 + i * 2.1; this.ctx.font = `${Math.round(28 * u)}px system-ui`; ctx.textAlign = 'center'; ctx.fillText('💫', B.x + Math.cos(a) * B.w * 0.25, B.y - B.h * 0.98 + Math.sin(a) * B.h * 0.05); }
+    if ((fxTm === 'wave' || fxTm === 'gust') && fxT > -0.05 && fxT < 0.6) { // bức tường nước / luồng gió bụi ập vào
+      const k = Math.min(1, Math.max(0, fxT + 0.05) / 0.45);
+      ctx.save(); ctx.globalAlpha = 0.6 * (1 - k * 0.6);
+      const g = ctx.createLinearGradient(0, H, 0, H * (0.9 - 0.8 * k));
+      if (fxTm === 'wave') { g.addColorStop(0, 'rgba(40,110,170,0.95)'); g.addColorStop(1, 'rgba(200,235,255,0.3)'); } else { g.addColorStop(0, 'rgba(200,170,120,0.9)'); g.addColorStop(1, 'rgba(230,210,170,0.1)'); }
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, H); for (let x = 0; x <= W; x += W / 30) ctx.lineTo(x, H * (0.95 - 0.85 * k) + Math.sin(x * 0.03 + tSec * 9) * H * 0.03); ctx.lineTo(W, H); ctx.fill();
+      ctx.restore();
     }
-    // đá bay
-    for (const k of dg.rocks || []) if (!k.smashed && k.z > 0 && k.z <= 1) drawRock(ctx, k.x, k.y, k.r, tSec);
+    if (cur?.need === 'hold' && d.curTo < 0) { // khoá sừng: thanh giằng co
+      const p = Math.min(1, -d.curTo / Math.max(0.1, cur.hold || 1)), bw = W * 0.4;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(W / 2 - bw / 2, H * 0.62, bw, 18 * u);
+      ctx.fillStyle = RESP.hold.color; ctx.fillRect(W / 2 - bw / 2, H * 0.62, bw * p, 18 * u);
+      ctx.font = `900 ${Math.round(30 * u)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText('💪 GIỮ CHẶT 2 TAY!', W / 2, H * 0.6);
+      for (let i = 0; i < 3; i++) this.burst(W / 2 + (Math.random() - 0.5) * W * 0.1, H * 0.5, '#fff2a8', 1);
+    }
+    if (d.phase === 'counter' || d.phase === 'tired') { // choáng / thở dốc: sao quay quanh đầu
+      ctx.font = `${Math.round(28 * u)}px system-ui`; ctx.textAlign = 'center';
+      for (let i = 0; i < 3; i++) { const a = tSec * 4 + i * 2.1; ctx.fillText(d.phase === 'tired' ? '💨' : '💫', B.x + Math.cos(a) * B.w * 0.25, B.y - B.h * 0.98 + Math.sin(a) * B.h * 0.05); }
+    }
+    if (d.rage === 2) { const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.95); v.addColorStop(0, 'rgba(255,0,0,0)'); v.addColorStop(1, `rgba(255,30,0,${0.18 + 0.08 * Math.sin(tSec * 6)})`); ctx.fillStyle = v; ctx.fillRect(0, 0, W, H); }
+    // vật bay
+    for (const k of dg.rocks || []) if (!k.smashed && k.z > 0 && k.z <= 1) {
+      drawProjectile(ctx, k.kind, k.x, k.y, k.r, tSec);
+      if (k.z < 0.75) { ctx.strokeStyle = `rgba(255,255,255,${0.5 + 0.4 * Math.sin(tSec * 20)})`; ctx.lineWidth = 3 * u; ctx.beginPath(); ctx.arc(k.x, k.y, k.r * 1.35, 0, Math.PI * 2); ctx.stroke(); }
+    }
     // điểm yếu
     const w = dg.weakNow();
     if (w) {
@@ -573,15 +623,30 @@ export class Renderer {
     }
     if (ui.dino) {
       const D = ui.dino, bw = Math.min(W * 0.5, 620 * u), bx = (W - bw) / 2;
-      text(`${D.boss ? '👑 ' : ''}${D.name}`, W / 2, 30 * u, 30, D.boss ? '#ffd23f' : '#fff');
+      text(`${D.boss ? '👑 ' : ''}${D.name}${D.rage === 2 ? ' 😡😡' : D.rage ? ' 😡' : ''}`, W / 2, 30 * u, 30, D.rage === 2 ? '#ff5a3c' : D.boss ? '#ffd23f' : '#fff');
       ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(bx - 3 * u, 54 * u, bw + 6 * u, 22 * u);
-      ctx.fillStyle = D.hp / D.maxHp < 0.3 ? '#ff3b3b' : '#ff7b2c'; ctx.fillRect(bx, 57 * u, bw * Math.max(0, D.hp / D.maxHp), 16 * u);
-      text(`Con ${D.wave} · Vòng ${D.level}`, W / 2, 98 * u, 20, '#d6e4ff', 'center', 700);
+      ctx.fillStyle = D.hp / D.maxHp <= 0.25 ? '#ff3b3b' : D.hp / D.maxHp <= 0.5 ? '#ff7b2c' : '#ffb347'; ctx.fillRect(bx, 57 * u, bw * Math.max(0, D.hp / D.maxHp), 16 * u);
+      ctx.fillStyle = 'rgba(255,255,255,0.6)'; for (const f of [0.25, 0.5]) ctx.fillRect(bx + bw * f - 1, 54 * u, 2, 22 * u); // mốc nổi giận
+      text(`${D.stage} · Con ${D.inStage}/${D.stageLen} · Vòng ${D.level}${D.parts ? ' · ' + D.parts : ''}`, W / 2, 98 * u, 20, '#d6e4ff', 'center', 700);
       text('♥'.repeat(Math.max(0, D.lives)) + '♡'.repeat(Math.max(0, D.maxLives - D.lives)), 24 * u, 40 * u, 40, '#ff4d6d', 'left');
       const rx = W - (D.padRight ? 86 : 24) * u; // chừa chỗ nút tạm dừng trên điện thoại
       text(String(D.score), rx, 44 * u, 52, '#fff', 'right');
       if (D.mult > 1) text(`×${D.mult} chuỗi ${D.combo}`, rx, 90 * u, 22, '#7dffb0', 'right', 800);
       else if (D.best != null) text(`Kỷ lục: ${D.best}`, rx, 90 * u, 20, '#d6e4ff', 'right', 600);
+    }
+    if (ui.fact && tMs >= ui.fact.at && tMs - ui.fact.at < 5500) { // "Bạn có biết?" — nhãn khoa học ngay trong game
+      const k = Math.min(1, (tMs - ui.fact.at) / 300, (5500 - (tMs - ui.fact.at)) / 400);
+      const x0 = W * 0.22, bw = W * 0.74, fs = Math.round(18 * u);
+      ctx.save(); ctx.globalAlpha = Math.max(0, k);
+      ctx.font = `600 ${fs}px system-ui, sans-serif`;
+      const words = ui.fact.text.split(' '), lines = []; let line = '';
+      for (const w of words) { const t2 = line ? line + ' ' + w : w; if (ctx.measureText(t2).width > bw - 24 * u) { lines.push(line); line = w; } else line = t2; }
+      lines.push(line);
+      const bh = lines.length * fs * 1.3 + 16 * u, y0 = H - bh - 14 * u;
+      ctx.fillStyle = 'rgba(10,12,30,0.72)'; ctx.fillRect(x0, y0, bw, bh);
+      ctx.fillStyle = '#f2f6ff'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      lines.forEach((l, i) => ctx.fillText(l, x0 + 12 * u, y0 + 8 * u + i * fs * 1.3));
+      ctx.restore();
     }
     if (ui.cue) this.cue(ui.cue, tMs, u, text);
     else if (ui.hint) text(ui.hint, W / 2, H * 0.25, 54);
@@ -624,7 +689,8 @@ export class Renderer {
   /** Gợi ý nhìn được từ xa: viền màn hình đổi màu theo động tác + biểu tượng thật to, đậm dần khi vật tới gần. */
   cue(cue, tMs, u, text) {
     const { ctx, W, H } = this;
-    const C = { jump: ['#00e5ff', '⬆', 'NHẢY'], duck: ['#c77dff', '⬇', 'NGỒI'], move: ['#ffd23f', cue.dir < 0 ? '⬅' : '➡', 'NÉ'], hands: ['#fff27a', '🙌', 'GIƠ TAY'], smash: ['#ffb347', '👊', 'ĐẬP ĐÁ'] }[cue.action];
+    const C = cue.color ? [cue.color, cue.arrow ? (cue.dir < 0 ? '⬅' : '➡') : cue.icon, cue.say] // Đấu khủng long: màu + icon + chữ theo phản ứng
+      : { jump: ['#00e5ff', '⬆', 'NHẢY'], duck: ['#c77dff', '⬇', 'NGỒI'], move: ['#ffd23f', cue.dir < 0 ? '⬅' : '➡', 'NÉ'], hands: ['#fff27a', '🙌', 'GIƠ TAY'], smash: ['#ffb347', '👊', 'ĐẬP ĐÁ'] }[cue.action];
     if (!C) return;
     const k = Math.max(0, Math.min(1, 1 - cue.t / 1.3));
     const pulse = 0.75 + 0.25 * Math.sin(tMs / 70);
@@ -635,8 +701,8 @@ export class Renderer {
     ctx.globalAlpha = 0.55 + 0.45 * k;
     const size = Math.min(W, H) * (0.16 + 0.08 * k) / u;
     const y = H * 0.22;
-    if (cue.label) text(cue.label, W / 2, H * 0.64, size * 0.36, '#ff5a3c'); // tên đòn khủng long sắp tung ra (dưới chữ hướng dẫn)
-    if (cue.action === 'move') text(`${cue.dir < 0 ? C[1] + ' ' : ''}${cue.say || C[2]}${cue.dir > 0 ? ' ' + C[1] : ''}`, W / 2, y, size * 0.8, C[0]);
+    if (cue.label) text(cue.label, W / 2, H * 0.64, size * 0.36 * Math.min(1, 16 / cue.label.length + 0.35), '#ff5a3c'); // tên đòn khủng long sắp tung ra (dưới chữ hướng dẫn)
+    if (cue.action === 'move' || cue.arrow) text(`${cue.dir < 0 ? C[1] + ' ' : ''}${cue.say || C[2]}${cue.dir > 0 ? ' ' + C[1] : ''}`, W / 2, y, size * 0.8, C[0]);
     else { text(C[1], W / 2, y, size, C[0]); text(cue.say || C[2], W / 2, y + size * u * 0.85, size * 0.42, C[0]); }
     ctx.restore();
   }
