@@ -6,6 +6,8 @@ import { SKELETON } from './pose.js';
 import { TileGeom } from './tiles.js';
 import { drawDino, drawDinoBg, dinoPose, drawWaterFront, drawProjectile } from './dinodraw.js';
 import { dinoBox, RESP } from './dino.js';
+import { drawPrincess, drawBallroom, drawPoseIcon, PRINCESSES, ARM_POSES } from './princess.js';
+import { POSES } from './dance.js';
 const hexA = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
 const clamp01 = x => Math.max(0, Math.min(1, x));
 
@@ -92,6 +94,7 @@ export class Renderer {
     if (this.look === 'game') { this.bgGame(); return; }
     if (this.look === 'fruit') { this.bgFruit(); return; }
     if (this.look === 'dino') { drawDinoBg(this, this.scroll || 0, this.dinoEnv || 'plains'); return; }
+    if (this.look === 'dance') { if (this._ballroom) ctx.drawImage(this._ballroom, 0, 0); else { ctx.fillStyle = '#1c0f3a'; ctx.fillRect(0, 0, W, H); } return; }
     // Canvas tự vẽ nền (hình camera hoặc nền tối) thay vì để thẻ <video> bên dưới lộ ra: không phụ thuộc trình duyệt
     // ghép lớp (lỗi trên Android), và khi phát sang TV qua Wi-Fi thì TV nhận đúng canvas này.
     const v = this.video;
@@ -496,6 +499,96 @@ export class Renderer {
     this.effects(dt);
   }
 
+  /**
+   * Cảnh VŨ HỘI CÔNG CHÚA (kiểu Audition): 3 công chúa nhảy mẫu & nhảy theo, người chơi (đã tách nền) đứng giữa sân khấu,
+   * dãy ô động tác + thanh "hạt nhịp" ở đáy, chữ chấm điểm to giữa màn hình.
+   * view: { t (thời gian bài), person, skel, pose, song, progress, lastJudge {grade, at, chain}, clapAt }
+   */
+  danceScene(dt, tSec, dg, view) {
+    const { ctx, W, H } = this, u = this.u, t = view.t;
+    this.scroll = tSec;
+    const ch = dg.chart, beat = ch.beat, u0 = dg.turn;
+    const songBeat = (t - (ch.turns[0]?.t0 ?? 0)) / beat, beatPh = Math.pow(1 - (((songBeat % 1) + 1) % 1), 3); // lóe ngay đầu phách
+    this.clear();
+    drawBallroom(this, tSec, beatPh, dg.feverLeft > 0, '#ff7eb6');
+    const floorY = H * 0.8, ph = H * 0.5;
+    // ---- biên đạo cho công chúa ----
+    const bi = u0 ? (t - u0.t0) / u0.beat : -1;
+    const pick = (lagBeats) => {
+      if (!u0 || bi < 0) return { pose: 'rest', twirl: 0, mood: 'happy' };
+      const b = bi - lagBeats;
+      if (u0.kind === 'break') { const k = Math.floor(b); const seqB = ['L', 'R', 'UL', 'UR', 'UP', 'WAVE', 'CLAP', 'UP']; return { pose: seqB[((k % 8) + 8) % 8], twirl: k % 4 === 3 ? (b % 1) : 0, mood: 'happy' }; }
+      const demoBeats = 4, n = u0.n;
+      if (b < demoBeats) { const k = Math.floor(b * Math.max(n, 4) / demoBeats) - (n < 4 ? 0 : 0); const kk = n <= 4 ? Math.floor(b) : Math.floor(b * n / demoBeats); void k; return { pose: kk < n ? u0.seq[kk] : 'rest', twirl: 0, mood: 'happy' }; }
+      if (u0.judged) { const g = u0.grade; return { pose: g === 'MISS' || g === 'BAD' ? 'rest' : 'UP', twirl: g === 'PERFECT' || g === 'GREAT' ? Math.min(1, (t - (u0.finishAt)) / (beat * 0.9)) : 0, mood: g === 'MISS' || g === 'BAD' ? 'sad' : 'wow' }; }
+      if (b >= u0.beats - 1.35) return { pose: 'CLAP', twirl: 0, mood: 'wow' };
+      if (u0.idx > 0) return { pose: u0.seq[u0.idx - 1], twirl: 0, mood: 'happy' };          // nhảy theo bước bạn vừa làm
+      return { pose: Math.floor(b) % 2 ? 'WAVE' : 'rest', twirl: 0, mood: 'happy' };
+    };
+    this._pr ||= PRINCESSES.map(() => ({ ...ARM_POSES.rest, squat: 0 }));
+    const spots = [{ x: W * 0.5, y: floorY - H * 0.07, h: ph * 0.78, lag: 0.08 }, { x: W * 0.17, y: floorY, h: ph, lag: 0 }, { x: W * 0.83, y: floorY, h: ph, lag: 0.04 }];
+    const drawOne = (i) => {
+      const S = PRINCESSES[i], st = this._pr[i], sp = spots[i], P = pick(sp.lag), tgt = ARM_POSES[P.pose] || ARM_POSES.rest;
+      const k = Math.min(1, dt * 14);
+      for (const key of ['a1', 'a2', 'e1', 'e2']) st[key] += (tgt[key] - st[key]) * k;
+      st.squat += ((tgt.squat || 0) - st.squat) * k;
+      const groove = Math.abs(Math.sin(Math.PI * (((songBeat - sp.lag) % 1) + 1)));
+      drawPrincess(ctx, sp.x, sp.y, sp.h, S, { ...st, t: tSec + i, bob: 0.025 * groove, sway: Math.sin((songBeat - sp.lag) * Math.PI) * 0.05, flare: 0.15 * groove, twirl: P.twirl, mood: P.mood, blink: Math.sin(tSec * 1.3 + i * 2) > 0.985 });
+    };
+    drawOne(0); // công chúa sau (giữa)
+    // ---- người chơi ở giữa sân khấu ----
+    if (view.person?.it) this.drawPersonAt(view.person.it, view.person.anchorF, view.person.anchorD, view.person.s, this.mirror);
+    else if (view.skel) this.skeleton(view.skel, null, null, tSec, 0.9);
+    if (view.pose && POSES[view.pose]) drawPoseIcon(ctx, W * 0.5 + ph * 0.24, floorY - ph * 0.95, 20 * u, POSES[view.pose], 'done', tSec);
+    drawOne(1); drawOne(2);
+    // vệt sáng khi vỗ tay
+    if (view.clapAt != null && tSec - view.clapAt < 0.35) { const k = (tSec - view.clapAt) / 0.35; ctx.save(); ctx.globalAlpha = 1 - k; ctx.strokeStyle = '#fff6b0'; ctx.lineWidth = 6 * u; ctx.beginPath(); ctx.arc(W / 2, floorY - ph * 0.75, (30 + 160 * k) * u, 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
+    // ---- bảng động tác + thanh hạt nhịp (đáy màn hình) ----
+    const py = H * 0.82, pH = H * 0.17;
+    ctx.fillStyle = 'rgba(12,6,28,0.72)'; ctx.fillRect(0, py, W, pH);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(0, py, W, 2);
+    if (u0 && u0.kind !== 'break' && bi >= 0) {
+      const n = u0.n, r = Math.min(30 * u, (W * 0.7) / Math.max(1, n) / 2.4), gap = r * 2.5, x0 = W / 2 - (n - 1) * gap / 2, iy = py + pH * 0.33;
+      for (let i = 0; i < n; i++) drawPoseIcon(ctx, x0 + i * gap, iy, r, POSES[u0.seq[i]], u0.done[i] ? 'done' : i === u0.idx ? 'now' : 'todo', tSec);
+      // thanh hạt nhịp: hạt chạy qua các phách; vạch vỗ tay ở phách cuối
+      const bw = W * 0.62, bx = W / 2 - bw / 2, by = py + pH * 0.76;
+      ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(bx, by - 3 * u, bw, 6 * u);
+      for (let k = 0; k < u0.beats; k++) { const x = bx + bw * k / (u0.beats - 1); ctx.fillStyle = k === u0.beats - 1 ? '#ffd84a' : 'rgba(255,255,255,0.55)'; ctx.beginPath(); ctx.arc(x, by, (k === u0.beats - 1 ? 13 : 4) * u, 0, Math.PI * 2); ctx.fill(); }
+      const prog = Math.min(1, Math.max(0, bi / (u0.beats - 1))), hx = bx + bw * prog;
+      const ready = u0.idx >= n;
+      const gB = ctx.createRadialGradient(hx, by, 0, hx, by, 18 * u); gB.addColorStop(0, '#fff'); gB.addColorStop(1, ready ? '#ffd84a' : '#ff7eb6');
+      ctx.fillStyle = gB; ctx.beginPath(); ctx.arc(hx, by, 11 * u, 0, Math.PI * 2); ctx.fill();
+      { // lời nhắc: đặt phía trên bảng, giữa màn hình (không bị cắt)
+        const msg = ready ? '👏 VỖ TAY khi hạt chạy tới vạch vàng!' : `Làm lần lượt ${n} động tác theo thứ tự`;
+        ctx.font = `800 ${Math.round(22 * u)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const mw = ctx.measureText(msg).width + 28 * u;
+        ctx.fillStyle = ready ? 'rgba(80,50,0,0.75)' : 'rgba(12,6,28,0.7)'; ctx.fillRect(W / 2 - mw / 2, py - 40 * u, mw, 34 * u);
+        ctx.fillStyle = ready ? '#ffd84a' : '#f2e8ff'; ctx.fillText(msg, W / 2, py - 23 * u);
+      }
+      ctx.textAlign = 'left'; ctx.fillStyle = '#d6c8ff'; ctx.fillText(u0.kind === 'finish' ? '✨ FINISH MOVE ×3' : `Lv ${u0.lvl}`, bx + bw + 20 * u, by);
+    } else if (u0?.kind === 'break') {
+      ctx.font = `800 ${Math.round(26 * u)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#ffc2dc';
+      ctx.fillText('✨ Các nàng công chúa solo — nghỉ chút, nhún theo nhạc nhé!', W / 2, py + pH / 2);
+    } else {
+      ctx.font = `800 ${Math.round(26 * u)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#ffc2dc';
+      ctx.fillText('🎵 Chuẩn bị… dãy động tác sắp hiện ra', W / 2, py + pH / 2);
+    }
+    // ---- chữ chấm điểm ----
+    const J = view.lastJudge;
+    if (J && tSec - J.at < 1.1) {
+      const k = (tSec - J.at) / 1.1, sc = k < 0.12 ? 0.6 + 3.3 * k : 1 - 0.1 * k;
+      ctx.save(); ctx.globalAlpha = k > 0.75 ? (1 - k) / 0.25 : 1; ctx.translate(W / 2, H * 0.3); ctx.scale(sc, sc);
+      const fs = Math.round(96 * u); ctx.font = `900 italic ${fs}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      let fill = { GREAT: '#7dffb0', COOL: '#6fc8ff', BAD: '#ffb347', MISS: '#9aa4b8' }[J.grade];
+      if (J.grade === 'PERFECT') { const g = ctx.createLinearGradient(-fs * 2.5, 0, fs * 2.5, 0); ['#ff5ea8', '#ffd84a', '#7dffb0', '#6fc8ff', '#c77dff'].forEach((col, i) => g.addColorStop(((i / 4) + tSec * 0.8) % 1, col)); fill = g; }
+      ctx.lineWidth = 10 * u; ctx.strokeStyle = 'rgba(30,10,50,0.85)'; ctx.strokeText(J.grade, 0, 0); ctx.fillStyle = fill; ctx.fillText(J.grade, 0, 0);
+      if (J.chain > 1 && J.grade === 'PERFECT') { ctx.font = `900 ${Math.round(44 * u)}px system-ui, sans-serif`; ctx.strokeText(`x${J.chain}`, fs * 2.1, fs * 0.1); ctx.fillStyle = '#ffd84a'; ctx.fillText(`x${J.chain}`, fs * 2.1, fs * 0.1); }
+      if (J.incomplete) { ctx.font = `800 ${Math.round(24 * u)}px system-ui, sans-serif`; ctx.fillStyle = '#ffb347'; ctx.fillText('Chưa làm đủ động tác!', 0, fs * 0.75); }
+      ctx.restore();
+    }
+    this.effects(dt);
+  }
+
   /** Vẽ người đã cắt nền với điểm neo tuỳ ý: điểm (fx,fy) của khung nhận diện → đặt tại (x,y) màn hình, thu nhỏ s. */
   drawPersonAt(it, af, ad, s, mirror) {
     if (!it?.canvas) return;
@@ -633,6 +726,21 @@ export class Renderer {
       text(String(D.score), rx, 44 * u, 52, '#fff', 'right');
       if (D.mult > 1) text(`×${D.mult} chuỗi ${D.combo}`, rx, 90 * u, 22, '#7dffb0', 'right', 800);
       else if (D.best != null) text(`Kỷ lục: ${D.best}`, rx, 90 * u, 20, '#d6e4ff', 'right', 600);
+    }
+    if (ui.dance) {
+      const D = ui.dance;
+      text(D.song, 24 * u, 30 * u, 24, '#fff', 'left', 800);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(24 * u, 50 * u, W * 0.3, 8 * u);
+      ctx.fillStyle = '#ff7eb6'; ctx.fillRect(24 * u, 50 * u, W * 0.3 * Math.max(0, Math.min(1, D.progress)), 8 * u);
+      text(`${Math.round(D.bpm)} BPM · ${D.diff}`, 24 * u, 76 * u, 18, '#d6c8ff', 'left', 700);
+      const rx = W - (D.padRight ? 86 : 24) * u;
+      text(String(D.score), rx, 40 * u, 46, '#fff', 'right');
+      text(D.combo > 1 ? `COMBO ${D.combo}` : ' ', rx, 82 * u, 22, '#7dffb0', 'right', 900);
+      // thanh FEVER
+      const fw = W * 0.22, fx = rx - fw, fyy = 100 * u;
+      ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(fx, fyy, fw, 10 * u);
+      if (D.feverOn) { const g = ctx.createLinearGradient(fx, 0, fx + fw, 0); ['#ff5ea8', '#ffd84a', '#7dffb0', '#6fc8ff'].forEach((c2, i) => g.addColorStop(((i / 3) + tMs / 900) % 1, c2)); ctx.fillStyle = g; ctx.fillRect(fx, fyy, fw, 10 * u); text('FEVER ×2 🔥', rx, 128 * u, 22, '#ffd84a', 'right', 900); }
+      else { ctx.fillStyle = '#ffb347'; ctx.fillRect(fx, fyy, fw * D.fever / 100, 10 * u); text('FEVER', fx - 8 * u, 105 * u, 14, '#ffb347', 'right', 800); }
     }
     if (ui.fact && tMs >= ui.fact.at && tMs - ui.fact.at < 5500) { // "Bạn có biết?" — nhãn khoa học ngay trong game
       const k = Math.min(1, (tMs - ui.fact.at) / 300, (5500 - (tMs - ui.fact.at)) / 400);

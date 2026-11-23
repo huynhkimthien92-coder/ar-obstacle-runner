@@ -84,6 +84,16 @@ Thời lượng phiên ngắn là cố ý: vận động toàn thân mệt nhanh
 - **Chấm điểm & độ khó:** cửa sổ sớm 0,45 s, muộn 0,12 s sau khi bù trễ màn hình; vừa chuyển tư thế trong 0,32 s cuối = PERFECT (8 điểm), đứng sẵn = TỐT (5). Độ khó tự chỉnh: nhắm ~78% phản ứng đúng → báo trước ×0,82…×1,3; combo/giả đòn chỉ mở khi chơi tốt.
 - **"Bạn có biết?"**: mỗi loài 1 dòng khoa học gắn nhãn [BC] bằng chứng / [GT] giả thuyết / [TK] thiết kế / [HUYỀN THOẠI] (vd. Dilophosaurus không có diềm, không phun độc — có gag diềm bật ra rồi xẹp).
 
+## 3e. Game thứ năm — "Vũ hội công chúa" (1 người) — kiểu Audition Choreography điều khiển bằng cơ thể
+- **Lượt 8 phách:** đầu lượt hiện chuỗi icon động tác; phách 1–4 ba công chúa múa mẫu; người chơi làm lần lượt từng động tác (giữ ≥ 0,12 s), rồi **VỖ TAY đúng phách cuối** (thay phím Space của Audition) khi hạt chạy tới vạch vàng.
+- **6 động tác:** ⬅ dang tay trái · ➡ dang tay phải · ↖ ↗ một tay chéo lên · ⬆ hai tay lên · ⬇ ngồi xuống. Nhận theo góc tay so với vai (chuẩn hoá theo bề rộng vai), ngồi lấy từ bộ nhận ngồi chung. Vỗ tay = 2 cổ tay < 0,55 × bề rộng vai (cạnh lên, chống dội 250 ms, trừ trễ camera 60 ms).
+- **Chấm:** lệch so với phách cuối (đã bù trễ màn hình + trễ loa) ≤ 75 ms PERFECT · 130 GREAT · 200 COOL · 300 BAD · còn lại / thiếu động tác / không vỗ = MISS. PERFECT liên tiếp tăng thanh **FEVER** → điểm ×2 trong 2 lượt. Lượt cuối 16 phách = **FINISH MOVE** ×3. Mỗi lượt thứ 5 là lượt nghỉ (công chúa múa solo).
+- **Độ dài chuỗi:** lượt đầu 2 động tác, tăng theo cấp (1 + lượt/3, +1 khi đoạn nhạc mạnh); tối đa Dễ 4 · Vừa 5 · Khó 6; không lặp liền, ⬇ tối đa 1 lần và không đứng đầu/cuối.
+- **Nhạc:** 2 bài có sẵn tự tổng hợp (🏰 Vũ hội lâu đài 112 BPM, 🌠 Đêm sao băng 124 BPM — tạo bằng JS trong ~1 s, không cần file) · **nhập nhạc riêng** (mp3/m4a/wav…): giải mã → tự dò BPM + phách đầu + phách mạnh + năng lượng từng đoạn (onset 2 dải → tự tương quan → dò pha → hồi quy tuyến tính chỉnh chu kỳ/pha) → lưu trong máy (IndexedDB, tối đa 6 bài). Nhịp múa kẹp 68–140 BPM (bài nhanh tự nhân đôi độ dài phách).
+- **Nhân vật gốc** (không dùng nhân vật có bản quyền): Hồng Ngọc (váy hồng, tóc búi), Bích Ngọc (váy ngọc lam, tóc đen dài), Kim Hoa (váy vàng, tóc xoăn đỏ, vương miện hoa hướng dương). Sảnh lâu đài: đèn chùm, đèn rọi, sàn nháy theo phách, pháo giấy khi FEVER.
+- **Bàn phím / thử không camera:** ← → ↑ ↓, Q/E (hoặc 7/9) chéo, Space = vỗ tay; chạm màn hình = vỗ tay.
+- **Xếp hạng:** S ≥ 92% · A ≥ 80% · B ≥ 65% · C ≥ 45%; lưu điểm cao nhất theo từng bài.
+
 ## 4. Bảng kinh tế điểm (tuning)
 | Biến | Gốc | Min | Max | Lý do |
 |---|---|---|---|---|
@@ -108,6 +118,7 @@ Thời lượng phiên ngắn là cố ý: vận động toàn thân mệt nhanh
 - FPS < 24 kéo dài hoặc trễ camera→pose p95 > 150 ms = **hỏng** cảm giác (xem PERFORMANCE.md).
 
 ## Changelog
+- v2.3 (24/11/2026): game thứ năm **Vũ hội công chúa** — lượt kiểu Audition (động tác theo thứ tự + vỗ tay đúng phách), PERFECT…MISS, FEVER, FINISH MOVE, 3 công chúa gốc, 2 bài có sẵn, nhập nhạc riêng có tự dò BPM, lưu bài trong máy.
 - v0.1 (23/11/2026): bản đầu, 5 loại chướng ngại + sao, 3 tier, tutorial 6 bước.
 - v2.0 (23/11/2026): Đấu khủng long v2 — 16 loài / 4 màn, ngữ pháp quỹ đạo + mã màu theo phản ứng, NHẢY, combo, giả đòn, bầy đàn, khoá sừng, vật bay, phase giận/thở dốc/nghỉ, bộ phận gãy, chống lặp theo phản ứng, độ khó thích ứng, PERFECT/TỐT, "Bạn có biết?".
 - v1.1 (23/11/2026): Đấu khủng long — khủng long có động tác thật (bước đi, lấy đà, ra đòn, thu về) thay vì phóng to hình tĩnh.

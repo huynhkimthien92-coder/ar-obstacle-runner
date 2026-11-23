@@ -14,6 +14,8 @@ import { TileGame, TileGeom } from './tiles.js';
 import { Cutouts } from './cutout.js';
 import { FruitGame } from './fruits.js';
 import { DinoGame, RESP, STAGES } from './dino.js';
+import { DanceGame, buildChart, POSES as DANCE_POSES } from './dance.js';
+import { MusicPlayer, BUILTIN, renderBuiltin, loadUserFile, listSavedSongs, loadSavedSong } from './music.js';
 import { PresenceGate } from './personcheck.js';
 
 const $ = id => document.getElementById(id);
@@ -47,13 +49,15 @@ const app = {
   tracker: new PlayerTracker(4), tg: null, geom: null, vgeom: null, tickSec: -1, resultShown: false,
   cutouts: new Cutouts(), mainIdx: 0, ps: null, baseFoot: null,
   fg: null, hands: {}, fps: null, arm: {}, ptr: null, gate: new PresenceGate(),
+  music: new MusicPlayer(), dance: null, claps: [], song: null, songs: [], clapState: false, lastClapAt: 0, clapFx: null,
 };
 // Nội dung chữ vẽ lên canvas cho TV (HUD, gợi ý, đếm ngược, bảng thông báo)
 const ui = { hud: null, hint: '', big: null, panel: null, corner: '', cornerColor: null, cue: null, tiles: null };
 const isTiles = () => settings.game === 'tiles';
 const isFruit = () => settings.game === 'fruit';
 const isDino = () => settings.game === 'dino';
-const segOn = () => settings.look === 'game' || isFruit() || isDino(); // cần mặt nạ tách người
+const isDance = () => settings.game === 'dance';
+const segOn = () => settings.look === 'game' || isFruit() || isDino() || isDance(); // cần mặt nạ tách người
 
 const tvOut = () => settings.output !== 'phone';
 const lagMs = () => settings.lag[settings.output] ?? 0;
@@ -70,7 +74,7 @@ function applyLook(m = app.mode) {
   const real = m === 'setup' || m === 'calib' || m === 'lagtest' || m === 'menu';
   const game = settings.look === 'game' && !real;
   const was = renderer.look;
-  renderer.look = isFruit() && !real ? 'fruit' : isDino() && !real ? 'dino' : game ? 'game' : 'ar'; // Chém trái cây luôn dùng nền trời cao + người thu nhỏ
+  renderer.look = isFruit() && !real ? 'fruit' : isDino() && !real ? 'dino' : isDance() && !real ? 'dance' : game ? 'game' : 'ar'; // Chém trái cây luôn dùng nền trời cao + người thu nhỏ
   renderer.bgDim = m === 'setup' ? 0 : real ? 0.15 : settings.bgDim;
   if (renderer.look === 'game') renderer.setWorld(renderer.H * 0.9, renderer.H * settings.playerScale / 1.7); // thế giới cố định, người thu nhỏ theo "Cỡ người"
   else if (was === 'game') renderer.setWorld(null, null);
@@ -202,7 +206,7 @@ function processPose(now) {
   }
   if (main) { app.primaryC = { x: (main[11].x + main[12].x) / 2, y: (main[11].y + main[12].y) / 2 }; app.primaryAt = now; }
   app.mainIdx = Math.max(0, r.all.indexOf(main));
-  if (r.masks && ['game', 'fruit', 'dino'].includes(renderer.look)) app.cutouts.update(r.frame, r.masks, r.all);
+  if (r.masks && ['game', 'fruit', 'dino', 'dance'].includes(renderer.look)) app.cutouts.update(r.frame, r.masks, r.all);
   // người chính phải xuất hiện ổn định ~0,45 s mới tính (lọc đồ vật bị nhận nhầm thoáng qua)
   const fr = app.pose.frame;
   main = app.gate.update(main, now, fr ? fr.width / fr.height : 16 / 9);
@@ -217,6 +221,7 @@ function processPose(now) {
     app.tracker.update(r.all, app.mapper, renderer.W, renderer.H, now, sigOf);
   }
   updateWorld();
+  if (isDance() && app.mode === 'dance') detectClap(r.ts);
   const pr = motion.state.present;
   if (app.prevPresent && !pr) app.lostEvents.push(now);
   app.prevPresent = pr;
@@ -437,6 +442,7 @@ function newGame() {
 function startCountdown() {
   if (isFruit()) { if (!app.fg || app.fg.over || ['calib', 'lagtest', 'menu', 'setup'].includes(app.mode)) newFruit(); }
   else if (isDino()) { if (!app.dg || app.dg.over || ['calib', 'lagtest', 'menu', 'setup'].includes(app.mode)) newDino(); }
+  else if (isDance()) { if (!newDance()) return; }
   else if (isTiles()) { if (!app.tg || app.tg.over || app.mode === 'calib' || app.mode === 'lagtest' || app.mode === 'menu') newTiles(); }
   else if (!app.game || app.game.over || app.mode === 'calib' || app.mode === 'lagtest') newGame();
   if (app.input === 'camera') motion.beginCalibration(true); // hiệu chỉnh lại nhanh trong lúc đứng chờ
@@ -451,6 +457,7 @@ function countdownFrame(now, dt) {
   if (isTiles()) return tilesCountdownFrame(now, dt);
   if (isFruit()) return fruitCountdownFrame(now, dt);
   if (isDino()) return dinoCountdownFrame(now, dt);
+  if (isDance()) return danceCountdownFrame(now, dt);
   const left = Math.ceil((app.countEnd - now) / 1000);
   if (left !== app.lastCount) { app.lastCount = left; if (left > 0) { big(String(left)); sfx.tick(); } }
   if (now >= app.countEnd) { big('GO!'); sfx.go(); setMode('play'); }
@@ -568,18 +575,20 @@ function gameOver() {
 function overFrame(now, dt) {
   if (isFruit()) renderer.fruitScene(dt, now / 1000, app.fg, fruitView(now, false));
   else if (isDino()) renderer.dinoScene(dt, now / 1000, app.dg, dinoView(now, false));
+  else if (isDance() && app.dance) renderer.danceScene(dt, now / 1000, app.dance, danceView(now));
   else if (isTiles()) renderer.tilesScene(dt, now / 1000, app.tg, drawGeom(), app.input === 'camera' ? app.tracker.list : [], app.tg.roster, null, tilesPeople());
   else renderer.frame(dt, now / 1000, app.game, player(), viewOpts());
   const anyHands = motion.state.handsUp || ((isTiles() || isFruit()) && app.tracker.list.some(p => p.present && p.handsUp));
   if (app.input === 'camera' && anyHands) {
     app.handsSince ||= now;
     if (ui.panel) ui.panel.progress = Math.min(1, (now - app.handsSince) / 1500);
-    if (now - app.handsSince > 1500) { app.game = null; app.tg = null; app.fg = null; app.dg = null; startCountdown(); }
+    if (now - app.handsSince > 1500) { app.game = null; app.tg = null; app.fg = null; app.dg = null; app.dance = null; startCountdown(); }
   } else { app.handsSince = 0; if (ui.panel) ui.panel.progress = null; }
 }
 
 function pause(title = 'Tạm dừng') {
-  if (!['play', 'countdown', 'tiles', 'fruit', 'dino'].includes(app.mode)) return;
+  if (!['play', 'countdown', 'tiles', 'fruit', 'dino', 'dance'].includes(app.mode)) return;
+  if (app.mode === 'dance' || (app.mode === 'countdown' && isDance())) app.music.pause();
   app.pausedFrom = app.mode;
   setMode('paused'); $('pause-title').textContent = title; show('scr-pause'); releaseWakeLock();
   ui.panel = { title: '⏸ ' + title, lines: ['Bấm "Tiếp tục" trên điện thoại'] };
@@ -588,12 +597,13 @@ async function resume() {
   if (!(await ensureCamera())) return;
   show(null); ui.panel = null;
   if (app.pausedFrom === 'tiles') { app.tilesLastT = 0; setMode('tiles'); requestWakeLock(); return; }
-  if (app.pausedFrom === 'fruit' || app.pausedFrom === 'dino') { setMode(app.pausedFrom); requestWakeLock(); return; } // Ô an toàn: chơi tiếp ngay (đồng hồ vòng đã dừng)
+  if (app.pausedFrom === 'fruit' || app.pausedFrom === 'dino') { setMode(app.pausedFrom); requestWakeLock(); return; }
+  if (app.pausedFrom === 'dance') { app.music.play(); setMode('dance'); requestWakeLock(); return; } // Ô an toàn: chơi tiếp ngay (đồng hồ vòng đã dừng)
   app.countEnd = performance.now() + 3000; app.lastCount = 0; setMode('countdown'); requestWakeLock();
 }
 function toMenu() {
   setMode('menu'); setHint(''); big(''); $('hud').hidden = true; releaseWakeLock();
-  stopCamera(); video.classList.remove('on'); app.pts = null; app.game = null; app.tg = null; app.fg = null; app.dg = null; ui.hud = null; ui.tiles = null; ui.fruit = null; ui.dino = null; ui.fact = null;
+  stopCamera(); video.classList.remove('on'); app.pts = null; app.game = null; app.tg = null; app.fg = null; app.dg = null; app.dance = null; app.music.stop(); ui.hud = null; ui.tiles = null; ui.fruit = null; ui.dino = null; ui.fact = null; ui.dance = null;
   ui.panel = link.live ? { title: 'AR Obstacle Runner', lines: ['Chọn chế độ chơi trên điện thoại'] } : null;
   renderer.clear(); show('scr-menu');
 }
@@ -635,6 +645,12 @@ window.addEventListener('keydown', e => {
   if (app.mode === 'over' && (e.key === 'Enter' || e.key === ' ')) { app.game = null; app.tg = null; app.fg = null; startCountdown(); return; }
   if (e.key === 'Escape' || e.key === 'p') { app.mode === 'paused' ? resume() : pause(); return; }
   if (app.input !== 'manual') return;
+  if (isDance()) { // ← → ↑ ↓ + Q/E (chéo) như Audition, SPACE = vỗ tay (chốt nhịp)
+    const dm = { ArrowLeft: 'L', ArrowRight: 'R', ArrowUp: 'UP', ArrowDown: 'DN', q: 'UL', e: 'UR', Q: 'UL', E: 'UR', 7: 'UL', 9: 'UR' };
+    if (e.key === ' ') { e.preventDefault(); if (!e.repeat) app.claps.push(performance.now()); return; }
+    if (dm[e.key]) { e.preventDefault(); app.manual.dpose = dm[e.key]; app.manual.dposeAt = performance.now(); }
+    return;
+  }
   const map = { ArrowLeft: 'left', a: 'left', ArrowRight: 'right', d: 'right', ArrowUp: 'jump', w: 'jump', ' ': 'jump', ArrowDown: 'duck', s: 'duck', h: 'hands', e: 'hands' };
   if (map[e.key]) { e.preventDefault(); if (!e.repeat) manualAction(map[e.key]); }
 });
@@ -843,7 +859,7 @@ function fruitUi() {
  * Vị trí + tỉ lệ một người trên màn hình (nhỏ, đứng ở đáy), tính từ landmark chuẩn hoá `raw`.
  * slot: trạng thái làm mượt tỉ lệ riêng cho từng người; ax: vị trí ngang (0..1) nơi đặt người.
  */
-function fruitPlace(raw, now, slot, ax) {
+function fruitPlace(raw, now, slot, ax, frac = FRUIT_PERSON, footY = 0.98) {
   const fr = app.pose?.frame;
   if (!raw || !fr) return null;
   const fw = fr.width, fh = fr.height, W = renderer.W, H = renderer.H;
@@ -853,13 +869,13 @@ function fruitPlace(raw, now, slot, ax) {
   const fi = [27, 28, 29, 30, 31, 32].filter(i => raw[i].v > 0.5);
   const feet = fi.length >= 2 ? { x: fi.reduce((a, i) => a + raw[i].x * fw, 0) / fi.length, y: Math.max(...fi.map(i => raw[i].y * fh)) } : null;
   const nose = P(0), headY = nose.v > 0.3 ? nose.y - shW * 0.75 : sh.y - shW * 1.2;
-  const targetH = H * FRUIT_PERSON;
+  const targetH = H * frac;
   const sNew = feet && feet.y - headY > 20 ? targetH / (feet.y - headY) : (targetH * 0.23) / shW;
   const k = 1 - Math.exp(-(now - (slot.t || now)) / 400); slot.t = now;
   slot.s = slot.s == null ? sNew : slot.s + (sNew - slot.s) * k;
   const s = slot.s, mirror = renderer.mirror;
   const anchorF = feet || sh;
-  const anchorD = { x: W * ax, y: feet ? H * 0.98 : H - targetH * 0.72 };
+  const anchorD = { x: W * ax, y: feet ? H * footY : H * footY - targetH * 0.7 };
   const toD = (x, y) => ({ x: anchorD.x + (mirror ? -1 : 1) * (x - anchorF.x) * s, y: anchorD.y + (y - anchorF.y) * s });
   return { s, anchorF, anchorD, toD, P, shW, mirror, fw, fh, raw, headD: toD(sh.x, headY) };
 }
@@ -1096,9 +1112,163 @@ function dinoOver() {
   setTimeout(() => { if (app.mode === 'over') show('scr-over'); }, 900);
   app.handsSince = 0;
 }
+// ---------------- Game "Vũ hội công chúa" (kiểu Audition) ----------------
+const DIFF_NAME = { easy: 'Dễ', normal: 'Vừa', hard: 'Khó' };
+const CAM_LAT = 0.06; // camera → khung nhận diện ≈ 60 ms (trừ đi khi chấm thời điểm vỗ tay)
+/** Chuẩn bị bài đang chọn (bài có sẵn phải "tổng hợp" trước ~1 s). */
+async function ensureSong() {
+  const id = settings.danceSong || BUILTIN[0].id;
+  if (app.song?.id === id && app.song.buffer) { setDanceStatus(songInfo(app.song)); return app.song; }
+  app.songCache ||= {};
+  if (!app.songCache[id]) { // mỗi bài chỉ chuẩn bị 1 lần; đổi bài liên tục không bị "đè" kết quả
+    const def = BUILTIN.find(b => b.id === id);
+    setDanceStatus('🎵 Đang chuẩn bị nhạc…');
+    app.songCache[id] = (async () => {
+      if (def) return renderBuiltin(def);
+      const rec = (await listSavedSongs()).find(x => x.id === id);
+      if (!rec) throw new Error('không thấy bài');
+      return loadSavedSong(rec);
+    })().catch(e => { console.error(e); delete app.songCache[id]; setDanceStatus('⚠ Không mở được bài này — chọn bài khác'); return null; });
+  }
+  const song = await app.songCache[id];
+  if ((settings.danceSong || BUILTIN[0].id) !== id) return ensureSong(); // người chơi đã đổi bài khác trong lúc chờ
+  if (!song) { settings.danceSong = BUILTIN[0].id; return ensureSong(); }
+  app.song = song; setDanceStatus(songInfo(song));
+  return song;
+}
+const songInfo = s => s ? `${s.name} · ${Math.round(s.bpm)} BPM · ${Math.floor(s.duration / 60)}:${String(Math.floor(s.duration % 60)).padStart(2, '0')}${s.builtin ? '' : s.confidence > 0.35 ? ' · nhịp rõ ✅' : ' · nhịp chưa chắc — nên chọn bài có trống rõ'}` : '';
+function setDanceStatus(t) { const el = $('dance-status'); if (el) el.textContent = t; }
+function newDance() {
+  if (!app.song?.buffer || app.song.id !== (settings.danceSong || BUILTIN[0].id)) { // nhạc chưa sẵn sàng → chuẩn bị xong tự bắt đầu
+    ui.panel = { title: '🎵 Đang chuẩn bị nhạc…', lines: ['Chờ một chút nhé'] };
+    if (!app.pendingDance) { app.pendingDance = true; ensureSong().then(() => { app.pendingDance = false; ui.panel = null; if (isDance()) startCountdown(); }); }
+    return false;
+  }
+  const chart = buildChart(app.song, { difficulty: settings.danceDiff || 'normal', seed: (Math.random() * 2 ** 31) | 0 });
+  app.dance = new DanceGame({ chart, lagMs: lagMs() });
+  app.music.load(app.song); app.claps = []; app.lastJudge = null; app.rated = false; app.slotD = {};
+  ui.dance = danceUi(); ui.hud = null; ui.tiles = null; ui.fruit = null; ui.dino = null;
+  return true;
+}
+function danceUi() {
+  const g = app.dance, s = app.song;
+  return { song: s.name, bpm: g.chart.bpm, diff: DIFF_NAME[settings.danceDiff || 'normal'], progress: app.music.time() / s.duration, score: g.score, combo: g.combo, fever: g.fever, feverOn: g.feverLeft > 0, padRight: !tvOut() };
+}
+/** Động tác hiện tại từ khung xương (toạ độ MÀN HÌNH — đã lật gương nên "trái" là trái của màn hình người chơi thấy). */
+function dancePose(now) {
+  if (app.input !== 'camera') return app.manual.dpose && now - app.manual.dposeAt < 350 ? app.manual.dpose : null;
+  const p = app.pts, s = motion.state;
+  if (!p || !s.present) return null;
+  if (s.ducking) return 'DN';
+  const A = { s: p[11], w: p[15] }, B = { s: p[12], w: p[16] };
+  const [lft, rgt] = A.s.x < B.s.x ? [A, B] : [B, A];
+  const sw = Math.max(8, Math.abs(A.s.x - B.s.x));
+  const cls = (arm, out) => {
+    if (!arm.w || arm.w.v < 0.35) return 'none';
+    const dx = (arm.w.x - arm.s.x) * out / sw, dy = (arm.w.y - arm.s.y) / sw;
+    if (dy < -0.9) return 'up';
+    if (dx > 0.85 && Math.abs(dy) < 0.75) return 'out';
+    return 'down';
+  };
+  const L = cls(lft, -1), R = cls(rgt, 1);
+  if (L === 'up' && R === 'up') return 'UP';
+  if (L === 'up' && R === 'down') return 'UL';
+  if (R === 'up' && L === 'down') return 'UR';
+  if (L === 'out' && R === 'down') return 'L';
+  if (R === 'out' && L === 'down') return 'R';
+  return null;
+}
+/** Vỗ tay = 2 cổ tay chạm nhau trước ngực / trên đầu (sườn lên của trạng thái "chạm"). */
+function detectClap(ts) {
+  const p = app.pts; if (!p) return;
+  const w1 = p[15], w2 = p[16], s1 = p[11], s2 = p[12];
+  const sw = Math.max(8, Math.abs(s1.x - s2.x));
+  const on = w1.v > 0.35 && w2.v > 0.35 && Math.hypot(w1.x - w2.x, w1.y - w2.y) < sw * 0.55 && Math.min(w1.y, w2.y) < (s1.y + s2.y) / 2 + sw * 1.6;
+  if (on && !app.clapState && ts - app.lastClapAt > 250) { app.claps.push(ts - CAM_LAT * 1000); app.lastClapAt = ts; }
+  app.clapState = on;
+}
+function danceView(now) {
+  const g = app.dance, t = app.music.time();
+  let person = null, skel = null;
+  if (app.input === 'camera' && app.raw && motion.state.present) {
+    const pl = fruitPlace(app.raw, now, app.slotD || (app.slotD = {}), 0.5, 0.5, 0.8);
+    const it = pl ? app.cutouts.items[app.mainIdx] : null;
+    if (it) person = { it, anchorF: pl.anchorF, anchorD: pl.anchorD, s: pl.s };
+    else if (pl) skel = app.raw.map(q => { const d = pl.toD(q.x * pl.fw, q.y * pl.fh); return { x: d.x, y: d.y, v: q.v }; });
+  }
+  return { t, person, skel, pose: app.curPose, lastJudge: app.lastJudge, clapAt: app.clapFx };
+}
+function danceCountdownFrame(now, dt) {
+  const left = Math.ceil((app.countEnd - now) / 1000);
+  if (left !== app.lastCount && left > 0) { app.lastCount = left; big(String(left)); sfx.tick(); }
+  app.curPose = dancePose(now);
+  renderer.danceScene(dt, now / 1000, app.dance, danceView(now));
+  if (now >= app.countEnd) { big('NHẢY NÀO! 💃'); app.music.play(0); app.claps = []; setMode('dance'); }
+}
+function danceFrame(now, dt) {
+  const g = app.dance, t = app.music.time();
+  app.curPose = dancePose(now);
+  const claps = app.claps.map(pms => app.music.timeAtPerf(pms)); if (app.claps.length) app.clapFx = now / 1000;
+  app.claps = [];
+  g.update(t, app.curPose, claps);
+  for (const ev of g.drain()) {
+    if (ev.kind === 'step') sfx.ok();
+    else if (ev.kind === 'judge') {
+      app.lastJudge = { grade: ev.grade, at: now / 1000, chain: ev.chain, incomplete: ev.incomplete };
+      if (ev.grade === 'PERFECT') { sfx.star(); renderer.burst(renderer.W / 2, renderer.H * 0.35, '#ffd84a', 30); }
+      else if (ev.grade === 'GREAT' || ev.grade === 'COOL') sfx.coin(); else sfx.hit?.();
+      if (ev.finish && ev.grade !== 'MISS') { big('✨ FINISH! ✨'); renderer.burst(renderer.W / 2, renderer.H * 0.5, '#ff7eb6', 60); }
+    } else if (ev.kind === 'fever') { big('FEVER! 🔥'); sfx.star(); }
+    else if (ev.kind === 'turn' && ev.turn.kind === 'break') sfx.cue_hands?.();
+  }
+  ui.dance = danceUi();
+  renderer.danceScene(dt, now / 1000, g, danceView(now));
+  if (g.over || (!app.music.playing && t > 1 && t >= app.song.duration - 0.5)) danceOver();
+}
+function danceOver() {
+  const g = app.dance;
+  app.music.stop(); setMode('over'); releaseWakeLock(); sfx.over();
+  const key = 'bestDance:' + app.song.id; let best = store.get(key, 0); const record = g.score > best && g.score > 0; best = Math.max(best, g.score); store.set(key, best);
+  const C = g.counts, title = `Hạng ${g.rank} · ${g.score} điểm`;
+  const detail = `PERFECT ${C.PERFECT} · GREAT ${C.GREAT} · COOL ${C.COOL} · BAD ${C.BAD} · MISS ${C.MISS} · combo ${g.maxCombo}`;
+  $('over-score').textContent = g.score; $('over-detail').textContent = `${app.song.name} — ${detail}`; $('over-best').textContent = record ? '🏆 Kỷ lục mới cho bài này!' : `Kỷ lục bài này: ${best}`;
+  $('over-hands').textContent = app.input === 'camera' ? 'hoặc giơ 2 tay 1.5 giây để nhảy lại' : '';
+  ui.panel = { title, color: '#ff7eb6', lines: [detail, record ? '🏆 Kỷ lục mới!' : `Kỷ lục bài này: ${best}`, app.input === 'camera' ? '🙌 Giơ 2 tay 1.5 giây để nhảy lại' : 'Enter / bấm Chơi lại'] };
+  const runs = store.get('runs', []); runs.push({ at: Date.now(), game: 'dance', song: app.song.name, bpm: app.song.bpm, score: g.score, rank: g.rank, counts: C, input: app.input, output: settings.output, lagMs: lagMs() }); store.set('runs', runs.slice(-30));
+  setTimeout(() => { if (app.mode === 'over') show('scr-over'); }, 900);
+  app.handsSince = 0;
+}
+/** Menu: danh sách bài (có sẵn + nhạc đã chọn trước đó), nút chọn nhạc trong máy, độ khó. */
+async function renderSongList() {
+  const sel = $('dance-song'); if (!sel) return;
+  const saved = await listSavedSongs();
+  sel.innerHTML = '';
+  for (const b of BUILTIN) sel.add(new Option(`${b.name} (${b.bpm} BPM)`, b.id));
+  for (const r of saved) sel.add(new Option(`🎧 ${r.name} (${Math.round(r.bpm)} BPM)`, r.id));
+  sel.value = settings.danceSong || BUILTIN[0].id;
+  if (!sel.value) sel.value = BUILTIN[0].id;
+  $('dance-diff').value = settings.danceDiff || 'normal';
+}
+function bindDanceMenu() {
+  if (!$('dance-song')) return;
+  $('dance-song').onchange = e => { settings.danceSong = e.target.value; saveSettings(); unlockAudio(); ensureSong(); };
+  $('dance-diff').onchange = e => { settings.danceDiff = e.target.value; saveSettings(); };
+  $('btn-dance-import').onclick = () => { unlockAudio(); $('dance-file').click(); };
+  $('dance-file').onchange = async e => {
+    const f = e.target.files?.[0]; if (!f) return;
+    try {
+      const song = await loadUserFile(f, setDanceStatus);
+      app.song = song; app.songCache ||= {}; app.songCache[song.id] = Promise.resolve(song); settings.danceSong = song.id; saveSettings();
+      await new Promise(r => setTimeout(r, 300)); await renderSongList(); $('dance-song').value = song.id;
+      setDanceStatus(songInfo(song));
+    } catch (err) { console.error(err); setDanceStatus('⚠ Không đọc được file này (hãy chọn MP3 / M4A / WAV)'); }
+    e.target.value = '';
+  };
+  renderSongList();
+}
 // chạm / kéo chuột để chém (chế độ không camera)
 const toCanvas = e => { const r = renderer.cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * renderer.W / r.width, y: (e.clientY - r.top) * renderer.H / r.height }; };
-$('stage').addEventListener('pointerdown', e => { if (isFruit() || isDino()) app.ptr = { ...toCanvas(e), down: true }; });
+$('stage').addEventListener('pointerdown', e => { if (isDance() && app.input === 'manual' && app.mode === 'dance') app.claps.push(performance.now()); if (isFruit() || isDino()) app.ptr = { ...toCanvas(e), down: true }; });
 $('stage').addEventListener('pointermove', e => { if ((isFruit() || isDino()) && app.ptr?.down) Object.assign(app.ptr, toCanvas(e)); });
 window.addEventListener('pointerup', () => { if (app.ptr) app.ptr.down = false; });
 
@@ -1106,6 +1276,7 @@ window.addEventListener('pointerup', () => { if (app.ptr) app.ptr.down = false; 
 const GAME_DESC = {
   runner: 'Bước né tường, nhảy qua hố lửa, ngồi tránh laser, giơ tay hái sao. 1 người.',
   tiles: 'Sàn nhà thành lưới ô. Hết giờ phải đứng trên Ô XANH — ô đỏ là hố lửa! Ô đổi ngẫu nhiên mỗi vòng. 1–4 người, người trụ lại cuối cùng thắng.',
+  dance: 'Nhảy cùng 3 nàng công chúa kiểu Audition: làm lần lượt dãy động tác (dang tay, giơ tay, ngồi) rồi VỖ TAY đúng nhịp ở vạch vàng. Chọn nhạc có sẵn hoặc nhạc trong máy bạn — game tự nghe nhịp. 1 người.',
   dino: '16 loài khủng long qua 4 màn lao tới nhìn thẳng vào bạn! Đánh điểm yếu; màn hình tô màu báo việc phải làm: ĐỎ né · VÀNG nhảy · TÍM ngồi · XANH giơ 2 tay · TRẮNG đập đá. Có combo, giả đòn, bầy đàn, trùm. 1 người.',
   fruit: 'Vung 2 tay chém trái cây rơi từ trên xuống, né bom. Đưa tay cao hơn đầu một chút là lưỡi chém đã chạm đỉnh màn hình — không cần với cao. 75 giây, 1–2 người (2 người đứng vào khung = đối kháng).',
 };
@@ -1114,12 +1285,17 @@ function renderGameSel() {
   $('g-tiles').classList.toggle('on', settings.game === 'tiles'); $('g-tiles').setAttribute('aria-checked', settings.game === 'tiles');
   $('g-fruit').classList.toggle('on', settings.game === 'fruit'); $('g-fruit').setAttribute('aria-checked', settings.game === 'fruit');
   $('g-dino').classList.toggle('on', settings.game === 'dino'); $('g-dino').setAttribute('aria-checked', settings.game === 'dino');
+  $('g-dance').classList.toggle('on', settings.game === 'dance'); $('g-dance').setAttribute('aria-checked', settings.game === 'dance');
+  $('dance-opts').hidden = settings.game !== 'dance';
   $('game-desc').textContent = GAME_DESC[settings.game];
 }
 $('g-runner').onclick = () => { settings.game = 'runner'; saveSettings(); renderGameSel(); };
 $('g-tiles').onclick = () => { settings.game = 'tiles'; saveSettings(); renderGameSel(); };
 $('g-fruit').onclick = () => { settings.game = 'fruit'; saveSettings(); renderGameSel(); };
 $('g-dino').onclick = () => { settings.game = 'dino'; saveSettings(); renderGameSel(); };
+$('g-dance').onclick = () => { settings.game = 'dance'; saveSettings(); renderGameSel(); unlockAudio(); ensureSong(); };
+bindDanceMenu();
+if (settings.game === 'dance') setTimeout(() => ensureSong().catch(() => {}), 500); // nạp sẵn bài đang chọn
 renderGameSel();
 
 // ---------------- Wake lock / lifecycle ----------------
@@ -1250,9 +1426,11 @@ function loop(now) {
     case 'tiles': tilesFrame(now, dt); break;
     case 'fruit': fruitFrame(now, dt); break;
     case 'dino': dinoFrame(now, dt); break;
+    case 'dance': danceFrame(now, dt); break;
     case 'paused':
       if (isFruit() && app.fg) renderer.fruitScene(0, now / 1000, app.fg, fruitView(now, false));
       else if (isDino() && app.dg) renderer.dinoScene(0, now / 1000, app.dg, dinoView(now, false));
+      else if (isDance() && app.dance) renderer.danceScene(0, now / 1000, app.dance, danceView(now));
       else if (isTiles() && app.tg) renderer.tilesScene(0, now / 1000, app.tg, drawGeom(), app.tracker.list, app.tg.roster, null, tilesPeople());
       else if (app.game) renderer.frame(0, now / 1000, app.game, player(), viewOpts());
       break;

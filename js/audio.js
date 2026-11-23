@@ -19,6 +19,9 @@ export function unlockAudio() {
   } catch { ac = null; }
 }
 export function setMuted(m) { muted = m; }
+/** Cho nhạc nền (Vũ hội công chúa) dùng chung AudioContext + đường ra (loa điện thoại hoặc stream sang TV). */
+export function audioCtx() { unlockAudio(); return ac; }
+export function audioOut() { return ac ? out() : null; }
 
 function tone(freq, dur, { type = 'square', vol = 0.12, slide = 0, delay = 0 } = {}) {
   if (!ac || muted) return;
