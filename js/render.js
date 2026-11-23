@@ -236,20 +236,77 @@ export class Renderer {
       this.fruitShape(hf.type, hf.r, tSec, true); ctx.restore();
     }
     if (this.halves) this.halves = this.halves.filter(hf => hf.life > 0 && hf.y < H + hf.r * 2);
-    // lưỡi chém: vệt sáng thon dần theo đường tay vừa đi qua
-    for (const h of view.hands || []) {
-      const tr = h.trail || [];
-      for (let i = 1; i < tr.length; i++) {
-        const k = i / tr.length;
-        ctx.strokeStyle = h.color; ctx.globalAlpha = 0.25 * k; ctx.lineWidth = (6 + 22 * k) * u; ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(tr[i - 1].x, tr[i - 1].y); ctx.lineTo(tr[i].x, tr[i].y); ctx.stroke();
-        ctx.strokeStyle = '#fff'; ctx.globalAlpha = 0.9 * k; ctx.lineWidth = (1.5 + 5 * k) * u; ctx.stroke();
-      }
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = h.color; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3 * u;
-      ctx.beginPath(); ctx.arc(h.x, h.y, (h.fast ? 16 : 11) * u, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    }
+    // lưỡi chém: vệt sáng thon dần theo đường tay vừa đi qua (không còn chấm tròn)
+    for (const h of view.hands || []) this.blade(h, tSec);
     this.effects(dt);
+  }
+
+  /**
+   * Vệt chém kiểu "lưỡi kiếm sáng": đuôi nhọn → thân dày dần → đầu bo tròn nhỏ.
+   * Điểm tay từ camera thưa (15–30 Hz) nên nội suy Catmull-Rom cho mượt; độ dài giới hạn ~30% chiều cao,
+   * tay đứng yên thì vệt co lại và chỉ còn một vòng mờ nhỏ báo vị trí.
+   */
+  blade(h, tSec) {
+    const { ctx, H } = this, u = this.u;
+    const raw = (h.trail || []).slice();
+    const last = raw[raw.length - 1];
+    if (!last || last.x !== h.x || last.y !== h.y) raw.push({ x: h.x, y: h.y });
+    let len = 0;
+    for (let i = 1; i < raw.length; i++) len += Math.hypot(raw[i].x - raw[i - 1].x, raw[i].y - raw[i - 1].y);
+    if (raw.length < 2 || len < H * 0.025) { // gần như đứng yên → vòng mờ nhỏ, không phải chấm đặc
+      ctx.save(); ctx.globalAlpha = 0.5; ctx.strokeStyle = h.color; ctx.lineWidth = 2 * u;
+      ctx.beginPath(); ctx.arc(h.x, h.y, 7 * u, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+      return;
+    }
+    // nội suy Catmull-Rom
+    const P = [];
+    for (let i = 0; i < raw.length - 1; i++) {
+      const p0 = raw[Math.max(0, i - 1)], p1 = raw[i], p2 = raw[i + 1], p3 = raw[Math.min(raw.length - 1, i + 2)];
+      const n = Math.max(1, Math.min(8, Math.round(Math.hypot(p2.x - p1.x, p2.y - p1.y) / (6 * u))));
+      for (let j = 0; j < n; j++) {
+        const t = j / n, t2 = t * t, t3 = t2 * t;
+        P.push({
+          x: 0.5 * (2 * p1.x + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
+          y: 0.5 * (2 * p1.y + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3),
+        });
+      }
+    }
+    P.push({ x: h.x, y: h.y });
+    // cắt bớt phần đuôi nếu dài quá 30% chiều cao màn hình
+    const maxLen = H * 0.3; let acc = 0, start = 0;
+    for (let i = P.length - 1; i > 0; i--) { acc += Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y); if (acc > maxLen) { start = i - 1; break; } }
+    const Q = P.slice(start);
+    if (Q.length < 2) return;
+    const dist = [0];
+    for (let i = 1; i < Q.length; i++) dist.push(dist[i - 1] + Math.hypot(Q[i].x - Q[i - 1].x, Q[i].y - Q[i - 1].y));
+    const total = dist[dist.length - 1] || 1;
+    // độ dày theo tốc độ: vung nhanh → lưỡi dày & sáng hơn
+    const power = Math.min(1, 0.45 + 0.55 * Math.min(1, (h.speed || 0) / 2.2));
+    const poly = (half) => {
+      const L = [], R = [];
+      for (let i = 0; i < Q.length; i++) {
+        const a = Q[Math.max(0, i - 1)], b = Q[Math.min(Q.length - 1, i + 1)];
+        let nx = -(b.y - a.y), ny = b.x - a.x; const nl = Math.hypot(nx, ny) || 1; nx /= nl; ny /= nl;
+        const k = dist[i] / total;                       // 0 = đuôi, 1 = đầu
+        const w = half * Math.pow(k, 0.85) * Math.min(1, 0.55 + (1 - k) * 6); // đuôi nhọn, đầu thu nhẹ
+        L.push([Q[i].x + nx * w, Q[i].y + ny * w]); R.push([Q[i].x - nx * w, Q[i].y - ny * w]);
+      }
+      ctx.beginPath(); ctx.moveTo(L[0][0], L[0][1]);
+      for (const p of L) ctx.lineTo(p[0], p[1]);
+      const hw = half * 0.55, end = Q[Q.length - 1], pre = Q[Q.length - 2];
+      const ang = Math.atan2(end.y - pre.y, end.x - pre.x);
+      ctx.arc(end.x, end.y, hw, ang - Math.PI / 2, ang + Math.PI / 2); // đầu bo tròn
+      for (let i = R.length - 1; i >= 0; i--) ctx.lineTo(R[i][0], R[i][1]);
+      ctx.closePath(); ctx.fill();
+    };
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = h.color; ctx.globalAlpha = 0.1 * power; poly(30 * u * power);    // quầng sáng ngoài (2 lớp cho mềm)
+    ctx.globalAlpha = 0.16 * power; poly(21 * u * power);
+    ctx.globalAlpha = 0.55 * power; poly(14 * u * power);                             // thân màu
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#ffffff'; ctx.globalAlpha = 0.95; poly(6 * u * power);            // lõi trắng sáng
+    ctx.restore();
   }
 
   /** Vẽ người đã cắt nền với điểm neo tuỳ ý: điểm (fx,fy) của khung nhận diện → đặt tại (x,y) màn hình, thu nhỏ s. */

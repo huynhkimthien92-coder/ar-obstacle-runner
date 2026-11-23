@@ -857,7 +857,10 @@ function trackHand(id, x, y, now, from = null) {
   const px = h.x, py = h.y;
   h.speed = dt ? Math.hypot(x - px, y - py) / dt / renderer.H : 0;
   Object.assign(h, { x, y, px, py, t: now, id, color: HAND_COLORS[id], from, fast: h.speed >= app.fg?.cfg.minSpeed });
-  h.trail.push({ x, y, t: now }); h.trail = h.trail.filter(p => now - p.t < 180);
+  const lp = h.trail[h.trail.length - 1];
+  if (!lp || Math.hypot(x - lp.x, y - lp.y) > 1.5 * renderer.u) h.trail.push({ x, y, t: now }); // bỏ điểm trùng (camera chậm hơn khung hình)
+  else lp.t = now;
+  h.trail = h.trail.filter(p => now - p.t < 220).slice(-24);
   return h;
 }
 function pointerHands(now) { // không camera: chạm / kéo chuột để chém
@@ -1074,4 +1077,4 @@ applyOutput();
 requestAnimationFrame(loop);
 
 // Cho kiểm thử tự động / console
-window.__aor = { app, motion, bench, settings, startManual, manualAction, link, ui, TUTORIAL };
+window.__aor = { app, renderer, motion, bench, settings, startManual, manualAction, link, ui, TUTORIAL };
