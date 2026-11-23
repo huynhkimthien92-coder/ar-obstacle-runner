@@ -7,7 +7,7 @@ Game vận động kiểu console cho phòng khách: **điện thoại = máy ch
 - 🔥 **Ô an toàn** (1–4 người): sàn trước camera thành lưới ô, mỗi vòng ô xanh/đỏ đổi ngẫu nhiên; hết giờ phải đứng trên ô xanh, ô đỏ là hố lửa. Người trụ lại cuối cùng thắng.
 - 🍉 **Chém trái cây** (1–2 người, 2 người = đối kháng): vung 2 tay chém trái rơi từ trên xuống, né bom; người thu nhỏ ở đáy, lưỡi chém theo hướng vươn tay nên không cần với cao.
 - 🦖 **Đấu khủng long** (1 người): 16 loài qua 4 màn lao tới nhìn thẳng vào bạn — đánh điểm yếu; màu báo việc phải làm (đỏ né · vàng nhảy · tím ngồi · xanh giơ tay · trắng đập); combo, giả đòn, bầy đàn, khoá sừng, trùm cuối màn.
-- 💃 **Vũ hội công chúa** (1 người): nhảy kiểu Audition cùng 3 công chúa — làm đúng chuỗi động tác tay/ngồi rồi **vỗ tay đúng phách**; PERFECT / FEVER / FINISH MOVE. **Nhập nhạc của bạn** (mp3, m4a…), game tự dò nhịp BPM.
+- 💃 **Vũ hội công chúa** (1 người): nhảy kiểu Audition cùng 3 công chúa 3D — làm đúng chuỗi động tác tay/ngồi rồi **vỗ tay đúng phách**; PERFECT / FEVER / FINISH MOVE. **Nhập nhạc của bạn** (mp3, m4a…), game tự dò nhịp BPM.
 
 **Chơi ngay trên điện thoại (không cần TV):** dựng máy dọc ngang tầm mắt, đứng gần ~1–1,5 m — game tự dùng khung nửa người (chỉ cần thấy đầu tới hông). Gợi ý động tác hiện thành viền màu + mũi tên lớn + âm báo nên không cần nhìn kỹ màn hình.
 
@@ -39,7 +39,11 @@ js/dinospecies.js     ★ vẽ 12 loài mới chính diện; js/dinokit.js: bộ
 js/dance.js           ★ game Vũ hội: tạo lượt theo nhịp, chuỗi động tác, chấm vỗ tay theo phách, FEVER
 js/beat.js            ★ dò BPM / phách / năng lượng từ file nhạc (thuần JS)
 js/music.js           bài có sẵn tự tổng hợp, nhập + lưu nhạc (IndexedDB), trình phát có bù trễ loa
-js/princess.js        vẽ 3 công chúa + sảnh lâu đài + icon động tác
+js/dancepose.js       ★ nhận diện 6 động tác + vỗ tay (góc tay, chống chớp, bắt vỗ nhanh)
+js/princess3d.js      công chúa 3D: mẫu VRM CC0 + váy dạ hội + vương miện, điều khiển xương theo động tác
+js/princess.js        sảnh lâu đài, icon động tác, công chúa 2D dự phòng
+js/vendor/three-0.170/ three.js + three-vrm (MIT), chỉ tải khi vào Vũ hội
+assets/princess/v1/   3 mẫu VRoid CC0 đã thu nhỏ (xem LICENSE.txt)
 js/personcheck.js     ★ lọc người giả (đồ vật bị nhận nhầm)
 js/cutout.js          tách người khỏi nền bằng mặt nạ MediaPipe (để thu nhỏ / đặt vào khung cảnh game)
 js/players.js         theo dõi tối đa 4 người (gán ID giữa các khung hình, điểm chân trên sàn)
@@ -77,4 +81,5 @@ docs/                 GDD, bản đồ, free-tier, checklist iOS/Android, hiệu
 Hình camera chỉ xử lý trên điện thoại của người chơi, không upload. Ở chế độ Wi-Fi, hình chỉ đi thẳng từ điện thoại tới TV trong mạng nhà bạn. Kỷ lục / phản hồi lưu localStorage trên máy.
 
 ## Giấy phép thành phần
+- Công chúa 3D: mẫu VRoid Studio "Victoria Rubin", "Darkness Shibu", "Vivi" — **CC0** (pixiv). three.js, @pixiv/three-vrm — MIT.
 MediaPipe Tasks Vision & model Pose Landmarker: Apache-2.0 (Google).

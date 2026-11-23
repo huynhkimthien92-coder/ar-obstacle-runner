@@ -113,3 +113,6 @@ dialog h3 { margin: 4px 0 4px; font-size: 16px; }
 .seg-btn.on { background: linear-gradient(135deg, #00c2ff, #6a5cff); }
 
 a.btn.tvlink { text-decoration: none; text-align: center; display: flex; align-items: center; justify-content: center; font-size: 14px; opacity: .9; }
+
+.dance-opts .chk { display: flex; gap: .5em; align-items: center; font-size: .92em; cursor: pointer; }
+.dance-opts .chk input { width: 1.2em; height: 1.2em; }

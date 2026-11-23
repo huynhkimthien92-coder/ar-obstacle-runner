@@ -91,3 +91,23 @@ test('giữ 1 tư thế không tính 2 bước liên tiếp (phải đổi tư t
   for (let t = 1; t < 2; t += 0.03) g.update(t, 'R', []);
   assert.equal(g.turn.idx, 2);
 });
+
+test('màn tập: giữ đúng động tác 0,6 s thì qua; làm sai lâu quá thì bỏ qua; vỗ tay đo được độ trễ', async () => {
+  const { DancePractice, PRACTICE_STEPS } = await import('../js/dance.js');
+  const pr = new DancePractice({ beat: 0.5, offset: 1, cfg: { giveUpSec: 5 } });
+  let t = 0; const tick = (pose, claps = [], mt = 0) => { pr.update(t, pose, claps, mt); t += 1 / 30; };
+  for (let k = 0; k < 25; k++) tick('L');
+  assert.equal(pr.step, 'R'); assert.equal(pr.res[0], true);
+  for (let k = 0; k < 6 * 30; k++) tick(null); // không làm R → sau 5 s bỏ qua
+  assert.equal(pr.step, 'UL'); assert.equal(pr.res[1], false);
+  for (const P of ['UL', 'UR', 'UP', 'DN']) for (let k = 0; k < 25; k++) tick(P);
+  assert.equal(pr.step, 'CLAP');
+  // vỗ tay trễ đều 0,12 s so với phách
+  let mt = 3.0; pr.update(t, null, [], mt);
+  const T = pr.clapTargets(); assert.equal(T.length, 8);
+  for (const x of T) { pr.update(t, null, [x + 0.12], x + 0.13); }
+  pr.update(t, null, [], T[7] + 1);
+  assert.ok(pr.done); assert.ok(Math.abs(pr.lag - 0.12) < 1e-9);
+  const ev = pr.drain(); assert.equal(ev.filter(e => e.kind === 'clap').length, 8); assert.equal(ev.at(-1).kind, 'done');
+  assert.equal(PRACTICE_STEPS.length, 7);
+});

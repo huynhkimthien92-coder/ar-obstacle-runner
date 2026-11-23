@@ -166,3 +166,58 @@ export class DanceGame {
     if (feverStart) this.events.push({ kind: 'fever' });
   }
 }
+
+// ---------------- Màn TẬP: học từng động tác + đo độ trễ vỗ tay ----------------
+export const PRACTICE_STEPS = ['L', 'R', 'UL', 'UR', 'UP', 'DN', 'CLAP'];
+export const PRACTICE_CFG = { holdSec: 0.6, hintSec: 6, giveUpSec: 16, clapCountIn: 4, clapN: 8, minClaps: 4 };
+
+/**
+ * Tập lần lượt 6 động tác (giữ đúng 0,6 s là qua; quá 16 s thì bỏ qua) rồi vỗ tay theo nhịp 8 lần.
+ * Kết quả vỗ tay: độ lệch trung vị (giây) giữa lúc bạn vỗ và phách nhạc — dùng bù trễ khi chấm (camera + loa + màn hình).
+ */
+export class DancePractice {
+  constructor({ beat, offset = 0, cfg = {} }) {
+    this.c = { ...PRACTICE_CFG, ...cfg }; this.beat = beat; this.offset = offset;
+    this.i = 0; this.held = 0; this.stepT = null; this.res = PRACTICE_STEPS.map(() => null);
+    this.clapStart = null; this.deltas = []; this.lag = null; this.done = false; this.events = [];
+  }
+  get step() { return PRACTICE_STEPS[this.i]; }
+  get hint() { return this.stepT != null && this._now - this.stepT > this.c.hintSec; }
+  /** Các phách cần vỗ (theo thời gian nhạc). */
+  clapTargets() { if (this.clapStart == null) return []; return Array.from({ length: this.c.clapN }, (_, k) => this.clapStart + (this.c.clapCountIn + k) * this.beat); }
+  /**
+   * @param t     đồng hồ thật (giây)
+   * @param pose  động tác đang nhận được
+   * @param claps thời điểm vỗ tay theo đồng hồ nhạc
+   * @param mt    thời gian nhạc hiện tại
+   */
+  update(t, pose, claps = [], mt = 0) {
+    this._now = t; if (this.done) return;
+    if (this.stepT == null) this.stepT = t;
+    const dt = this._lt == null ? 0 : Math.min(0.1, t - this._lt); this._lt = t;
+    const st = this.step;
+    if (st !== 'CLAP') {
+      if (pose === st) this.held += dt; else this.held = Math.max(0, this.held - dt * 0.5);
+      if (this.held >= this.c.holdSec) this._next(true, t);
+      else if (t - this.stepT > this.c.giveUpSec) this._next(false, t);
+      return;
+    }
+    // vỗ tay: bắt đầu ở phách kế tiếp, đếm 4 phách rồi vỗ 8 phách
+    if (this.clapStart == null) { const k = Math.ceil((mt - this.offset) / this.beat + 0.5); this.clapStart = this.offset + k * this.beat; }
+    const T = this.clapTargets();
+    for (const ct of claps) {
+      let best = null;
+      for (const x of T) if (best == null || Math.abs(ct - x) < Math.abs(ct - best)) best = x;
+      if (best != null && Math.abs(ct - best) < this.beat * 0.45) { this.deltas.push(ct - best); this.events.push({ kind: 'clap', delta: ct - best }); }
+    }
+    if (mt > T[T.length - 1] + this.beat * 0.6) {
+      const d = [...this.deltas].sort((a, b) => a - b);
+      this.lag = d.length >= this.c.minClaps ? d[Math.floor(d.length / 2)] : null;
+      this.res[this.i] = this.lag != null;
+      this.done = true; this.events.push({ kind: 'done', lag: this.lag, claps: d.length, ok: this.res.filter(Boolean).length });
+    }
+  }
+  _next(ok, t) { this.res[this.i] = ok; this.events.push({ kind: 'step', step: this.step, ok }); this.i++; this.held = 0; this.stepT = t; }
+  get progress() { return this.step === 'CLAP' ? 0 : Math.min(1, this.held / this.c.holdSec); }
+  drain() { const e = this.events; this.events = []; return e; }
+}

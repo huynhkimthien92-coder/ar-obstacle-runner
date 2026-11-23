@@ -1,13 +1,14 @@
 // Service worker: app shell cache-first + cache file MediaPipe (wasm ~14MB, model ~5MB) để lần sau chơi offline.
 // Đổi VERSION mỗi lần deploy để người dùng nhận bản mới.
-const VERSION = 'aor-v2.3.0';
+const VERSION = 'aor-v2.4.0';
 const SHELL = [
   './', './index.html', './display.html', './css/style.css', './manifest.webmanifest',
   './js/main.js', './js/config.js', './js/camera.js', './js/pose.js', './js/filters.js', './js/motion.js',
-  './js/game.js', './js/levels.js', './js/render.js', './js/audio.js', './js/bench.js', './js/link.js', './js/display.js', './js/players.js', './js/tiles.js', './js/cutout.js', './js/fruits.js', './js/personcheck.js', './js/dino.js', './js/dinodraw.js', './js/dinokit.js', './js/dinospecies.js', './js/beat.js', './js/dance.js', './js/music.js', './js/princess.js',
+  './js/game.js', './js/levels.js', './js/render.js', './js/audio.js', './js/bench.js', './js/link.js', './js/display.js', './js/players.js', './js/tiles.js', './js/cutout.js', './js/fruits.js', './js/personcheck.js', './js/dino.js', './js/dinodraw.js', './js/dinokit.js', './js/dinospecies.js', './js/beat.js', './js/dance.js', './js/music.js', './js/princess.js', './js/dancepose.js', './js/princess3d.js',
   './icons/icon-192.png', './icons/icon-512.png',
 ];
-const RUNTIME = 'aor-runtime-v1'; // file CDN có version trong URL → bất biến, giữ qua các bản deploy
+const RUNTIME = 'aor-runtime-v1';
+const IMMUTABLE = ['/js/vendor/three-0.170/', '/assets/princess/v1/']; // thư viện + mẫu 3D có version trong đường dẫn → giữ qua các bản deploy // file CDN có version trong URL → bất biến, giữ qua các bản deploy
 const CDN_HOSTS = ['cdn.jsdelivr.net', 'storage.googleapis.com'];
 
 self.addEventListener('install', e => {
@@ -25,7 +26,7 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  if (CDN_HOSTS.includes(url.hostname)) {
+  if (CDN_HOSTS.includes(url.hostname) || (url.origin === location.origin && IMMUTABLE.some(p => url.pathname.includes(p)))) {
     e.respondWith(caches.open(RUNTIME).then(async c => {
       const hit = await c.match(req);
       if (hit) return hit;

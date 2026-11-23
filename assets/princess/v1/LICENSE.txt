@@ -1,0 +1,14 @@
+Mẫu nhân vật 3D (định dạng VRM) dùng cho 3 công chúa trong game "Vũ hội công chúa":
+
+  victoria.vrm  ← "Victoria Rubin"   (VRoid Studio sample model)
+  shibu.vrm     ← "Darkness Shibu"   (VRoid Studio sample model)
+  vivi.vrm      ← "Vivi"             (VRoid Studio sample model)
+
+Giấy phép: CC0 1.0 (public domain) — ghi ngay trong metadata của từng file (licenseName: CC0),
+theo trang của pixiv: "Do VRoid Studio's sample models come with conditions of use?"
+https://vroid.pixiv.help/hc/en-us/articles/4402614652569
+Bản gốc lấy từ https://github.com/madjin/vrm-samples (thư mục vroid/beta).
+
+Đã chỉnh sửa để chạy nhẹ trên điện thoại: thu nhỏ ảnh texture (512 px), bỏ normal map và ảnh thumbnail lớn,
+bỏ normal của morph target, chuyển morph target sang dạng sparse (scripts/shrink_vrm.py).
+Váy dạ hội xoè và vương miện được dựng thêm bằng code trong js/princess3d.js.

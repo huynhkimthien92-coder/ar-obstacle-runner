@@ -14,7 +14,9 @@ import { TileGame, TileGeom } from './tiles.js';
 import { Cutouts } from './cutout.js';
 import { FruitGame } from './fruits.js';
 import { DinoGame, RESP, STAGES } from './dino.js';
-import { DanceGame, buildChart, POSES as DANCE_POSES } from './dance.js';
+import { DanceGame, buildChart, POSES as DANCE_POSES, DancePractice } from './dance.js';
+import { DancePoseDetector } from './dancepose.js';
+import { Princess3D } from './princess3d.js';
 import { MusicPlayer, BUILTIN, renderBuiltin, loadUserFile, listSavedSongs, loadSavedSong } from './music.js';
 import { PresenceGate } from './personcheck.js';
 
@@ -49,7 +51,7 @@ const app = {
   tracker: new PlayerTracker(4), tg: null, geom: null, vgeom: null, tickSec: -1, resultShown: false,
   cutouts: new Cutouts(), mainIdx: 0, ps: null, baseFoot: null,
   fg: null, hands: {}, fps: null, arm: {}, ptr: null, gate: new PresenceGate(),
-  music: new MusicPlayer(), dance: null, claps: [], song: null, songs: [], clapState: false, lastClapAt: 0, clapFx: null,
+  music: new MusicPlayer(), dpd: new DancePoseDetector(), p3d: new Princess3D(), practice: null, dance: null, claps: [], song: null, songs: [], clapState: false, lastClapAt: 0, clapFx: null,
 };
 // Nội dung chữ vẽ lên canvas cho TV (HUD, gợi ý, đếm ngược, bảng thông báo)
 const ui = { hud: null, hint: '', big: null, panel: null, corner: '', cornerColor: null, cue: null, tiles: null };
@@ -221,7 +223,7 @@ function processPose(now) {
     app.tracker.update(r.all, app.mapper, renderer.W, renderer.H, now, sigOf);
   }
   updateWorld();
-  if (isDance() && app.mode === 'dance') detectClap(r.ts);
+  if (isDance()) { app.rawScr = main ? main.map(app.mapper) : null; if (app.mode === 'dance') detectClap(r.ts); }
   const pr = motion.state.present;
   if (app.prevPresent && !pr) app.lostEvents.push(now);
   app.prevPresent = pr;
@@ -603,7 +605,7 @@ async function resume() {
 }
 function toMenu() {
   setMode('menu'); setHint(''); big(''); $('hud').hidden = true; releaseWakeLock();
-  stopCamera(); video.classList.remove('on'); app.pts = null; app.game = null; app.tg = null; app.fg = null; app.dg = null; app.dance = null; app.music.stop(); ui.hud = null; ui.tiles = null; ui.fruit = null; ui.dino = null; ui.fact = null; ui.dance = null;
+  stopCamera(); video.classList.remove('on'); app.pts = null; app.game = null; app.practice = null; app.tg = null; app.fg = null; app.dg = null; app.dance = null; app.music.stop(); ui.hud = null; ui.tiles = null; ui.fruit = null; ui.dino = null; ui.fact = null; ui.dance = null;
   ui.panel = link.live ? { title: 'AR Obstacle Runner', lines: ['Chọn chế độ chơi trên điện thoại'] } : null;
   renderer.clear(); show('scr-menu');
 }
@@ -1145,48 +1147,38 @@ function newDance() {
     return false;
   }
   const chart = buildChart(app.song, { difficulty: settings.danceDiff || 'normal', seed: (Math.random() * 2 ** 31) | 0 });
-  app.dance = new DanceGame({ chart, lagMs: lagMs() });
+  app.dance = new DanceGame({ chart, lagMs: danceLag() });
+  app.practice = wantPractice() ? new DancePractice({ beat: chart.beat, offset: app.song.offset || 0 }) : null;
+  app.skipPractice = false; app.dpd.reset();
   app.music.load(app.song); app.claps = []; app.lastJudge = null; app.rated = false; app.slotD = {};
   ui.dance = danceUi(); ui.hud = null; ui.tiles = null; ui.fruit = null; ui.dino = null;
   return true;
 }
+/** Độ trễ khi chấm vỗ tay: đo được ở màn Tập (camera + loa + phản xạ) thì dùng, chưa đo thì dùng độ trễ màn hình. */
+function danceLag() { return settings.danceClapLag != null && app.input === 'camera' ? settings.danceClapLag : lagMs(); }
+function wantPractice() { return !app.skipPractice && ($('dance-practice')?.checked ?? !settings.dancePracticeDone); }
 function danceUi() {
   const g = app.dance, s = app.song;
   return { song: s.name, bpm: g.chart.bpm, diff: DIFF_NAME[settings.danceDiff || 'normal'], progress: app.music.time() / s.duration, score: g.score, combo: g.combo, fever: g.fever, feverOn: g.feverLeft > 0, padRight: !tvOut() };
 }
-/** Động tác hiện tại từ khung xương (toạ độ MÀN HÌNH — đã lật gương nên "trái" là trái của màn hình người chơi thấy). */
+/** Động tác hiện tại từ khung xương (toạ độ MÀN HÌNH — đã lật gương nên "trái" là trái của màn hình người chơi thấy). Xem js/dancepose.js. */
 function dancePose(now) {
   if (app.input !== 'camera') return app.manual.dpose && now - app.manual.dposeAt < 350 ? app.manual.dpose : null;
-  const p = app.pts, s = motion.state;
-  if (!p || !s.present) return null;
-  if (s.ducking) return 'DN';
-  const A = { s: p[11], w: p[15] }, B = { s: p[12], w: p[16] };
-  const [lft, rgt] = A.s.x < B.s.x ? [A, B] : [B, A];
-  const sw = Math.max(8, Math.abs(A.s.x - B.s.x));
-  const cls = (arm, out) => {
-    if (!arm.w || arm.w.v < 0.35) return 'none';
-    const dx = (arm.w.x - arm.s.x) * out / sw, dy = (arm.w.y - arm.s.y) / sw;
-    if (dy < -0.9) return 'up';
-    if (dx > 0.85 && Math.abs(dy) < 0.75) return 'out';
-    return 'down';
-  };
-  const L = cls(lft, -1), R = cls(rgt, 1);
-  if (L === 'up' && R === 'up') return 'UP';
-  if (L === 'up' && R === 'down') return 'UL';
-  if (R === 'up' && L === 'down') return 'UR';
-  if (L === 'out' && R === 'down') return 'L';
-  if (R === 'out' && L === 'down') return 'R';
-  return null;
+  if (!app.pts || !motion.state.present) { app.dpd.reset(); return null; }
+  return app.dpd.update(app.pts, motion.state.ducking);
 }
-/** Vỗ tay = 2 cổ tay chạm nhau trước ngực / trên đầu (sườn lên của trạng thái "chạm"). */
+/** Vỗ tay từ điểm CHƯA làm mượt (đỡ trễ); bắt cả cú vỗ nhanh lọt giữa 2 khung hình. */
 function detectClap(ts) {
-  const p = app.pts; if (!p) return;
-  const w1 = p[15], w2 = p[16], s1 = p[11], s2 = p[12];
-  const sw = Math.max(8, Math.abs(s1.x - s2.x));
-  const on = w1.v > 0.35 && w2.v > 0.35 && Math.hypot(w1.x - w2.x, w1.y - w2.y) < sw * 0.55 && Math.min(w1.y, w2.y) < (s1.y + s2.y) / 2 + sw * 1.6;
-  if (on && !app.clapState && ts - app.lastClapAt > 250) { app.claps.push(ts - CAM_LAT * 1000); app.lastClapAt = ts; }
-  app.clapState = on;
+  const hit = app.rawScr ? app.dpd.clap(app.rawScr, ts) : null;
+  if (hit != null) app.claps.push(hit - CAM_LAT * 1000);
 }
+/** Công chúa 3D: nạp muộn khi chọn game Vũ hội (~12 MB, lần sau lấy từ bộ nhớ đệm). */
+function loadPrincesses() {
+  if (app.p3d.loading || settings.princess3d === false) return;
+  setDanceStatus2('👗 Đang tải 3 nàng công chúa 3D…');
+  app.p3d.load((k, n) => setDanceStatus2(`👗 Đang tải công chúa 3D ${k}/${n}…`)).then(ok => setDanceStatus2(ok ? '👗 Công chúa 3D sẵn sàng' : '👗 Máy không hiển thị được 3D — dùng hình vẽ 2D'));
+}
+function setDanceStatus2(t) { const el = $('dance-status2'); if (el) el.textContent = t; }
 function danceView(now) {
   const g = app.dance, t = app.music.time();
   let person = null, skel = null;
@@ -1203,9 +1195,10 @@ function danceCountdownFrame(now, dt) {
   if (left !== app.lastCount && left > 0) { app.lastCount = left; big(String(left)); sfx.tick(); }
   app.curPose = dancePose(now);
   renderer.danceScene(dt, now / 1000, app.dance, danceView(now));
-  if (now >= app.countEnd) { big('NHẢY NÀO! 💃'); app.music.play(0); app.claps = []; setMode('dance'); }
+  if (now >= app.countEnd) { if (app.practice) { big('TẬP NHÉ! 🎓'); app.practice.update(now / 1000, null, [], 0); } else { big('NHẢY NÀO! 💃'); app.music.play(0); } app.claps = []; setMode('dance'); }
 }
 function danceFrame(now, dt) {
+  if (app.practice) return practiceFrame(now, dt);
   const g = app.dance, t = app.music.time();
   app.curPose = dancePose(now);
   const claps = app.claps.map(pms => app.music.timeAtPerf(pms)); if (app.claps.length) app.clapFx = now / 1000;
@@ -1224,6 +1217,42 @@ function danceFrame(now, dt) {
   ui.dance = danceUi();
   renderer.danceScene(dt, now / 1000, g, danceView(now));
   if (g.over || (!app.music.playing && t > 1 && t >= app.song.duration - 0.5)) danceOver();
+}
+const PRACTICE_TIP = {
+  L: ['Dang thẳng tay bên TRÁI màn hình ra ngang vai', 'Duỗi thẳng khuỷu, tay ngang vai; tay kia buông xuôi'],
+  R: ['Dang thẳng tay bên PHẢI màn hình ra ngang vai', 'Duỗi thẳng khuỷu, tay ngang vai; tay kia buông xuôi'],
+  UL: ['Giơ tay bên TRÁI màn hình lên cao', 'Tay giơ cao hơn đầu (chếch cũng được); tay kia buông xuôi'],
+  UR: ['Giơ tay bên PHẢI màn hình lên cao', 'Tay giơ cao hơn đầu (chếch cũng được); tay kia buông xuôi'],
+  UP: ['Giơ CẢ 2 tay lên cao', 'Hai tay cao hơn đầu; lùi ra xa nếu tay bị ra khỏi khung hình'],
+  DN: ['NGỒI xuống (khuỵu gối)', 'Hạ người xuống rõ ràng ~1 gang tay rồi giữ; đứng lên khi có dấu ✓'],
+  CLAP: ['VỖ TAY theo nhạc mỗi khi hạt chạm chấm vàng', 'Vỗ trước ngực, 2 bàn tay chạm hẳn vào nhau'],
+};
+function practiceFrame(now, dt) {
+  const pr = app.practice, g = app.dance;
+  app.curPose = dancePose(now);
+  if (pr.step === 'CLAP' && !app.music.playing && !pr.done) app.music.play(0);
+  const mt = app.music.time();
+  const claps = app.claps.map(pms => app.music.timeAtPerf(pms)); if (app.claps.length) app.clapFx = now / 1000;
+  app.claps = [];
+  pr.update(now / 1000, app.curPose, claps, mt);
+  for (const ev of pr.drain()) {
+    if (ev.kind === 'step') { if (ev.ok) { sfx.star(); renderer.burst(renderer.W / 2, renderer.H * 0.4, '#7dffb0', 24); } else sfx.tick(); }
+    else if (ev.kind === 'clap') { sfx.ok(); app.lastPracClap = { d: ev.delta, at: now / 1000 }; }
+    else if (ev.kind === 'done') {
+      app.music.stop();
+      if (ev.lag != null && app.input === 'camera') settings.danceClapLag = Math.round(Math.max(-150, Math.min(450, ev.lag * 1000)));
+      settings.dancePracticeDone = true; saveSettings(); if ($('dance-practice')) $('dance-practice').checked = false;
+      const lagTxt = ev.lag == null ? 'chưa đo được độ trễ vỗ tay (vỗ chưa đủ 4 lần) — dùng giá trị cũ' : `độ trễ vỗ tay ${Math.round(ev.lag * 1000)} ms → đã bù khi chấm`;
+      app.pracDone = { at: now, text: `Xong! Làm được ${ev.ok}/7 bước · ${lagTxt}` };
+      big('🎉 XONG PHẦN TẬP!');
+    }
+  }
+  const tip = PRACTICE_TIP[pr.step] || PRACTICE_TIP.CLAP;
+  renderer.danceScene(dt, now / 1000, g, { ...danceView(now), practice: { pr, tip, mt, seen: app.curPose, dbg: app.input === 'camera' ? app.dpd.dbg : null, lastClap: app.lastPracClap, done: app.pracDone } });
+  if (app.pracDone && now - app.pracDone.at > 3200) { // vào bài nhảy thật
+    app.pracDone = null; app.practice = null; app.skipPractice = true;
+    if (newDance()) { app.countEnd = performance.now() + 3000; app.lastCount = 0; setMode('countdown'); }
+  }
 }
 function danceOver() {
   const g = app.dance;
@@ -1253,6 +1282,7 @@ function bindDanceMenu() {
   if (!$('dance-song')) return;
   $('dance-song').onchange = e => { settings.danceSong = e.target.value; saveSettings(); unlockAudio(); ensureSong(); };
   $('dance-diff').onchange = e => { settings.danceDiff = e.target.value; saveSettings(); };
+  $('dance-practice').checked = !settings.dancePracticeDone;
   $('btn-dance-import').onclick = () => { unlockAudio(); $('dance-file').click(); };
   $('dance-file').onchange = async e => {
     const f = e.target.files?.[0]; if (!f) return;
@@ -1293,9 +1323,10 @@ $('g-runner').onclick = () => { settings.game = 'runner'; saveSettings(); render
 $('g-tiles').onclick = () => { settings.game = 'tiles'; saveSettings(); renderGameSel(); };
 $('g-fruit').onclick = () => { settings.game = 'fruit'; saveSettings(); renderGameSel(); };
 $('g-dino').onclick = () => { settings.game = 'dino'; saveSettings(); renderGameSel(); };
-$('g-dance').onclick = () => { settings.game = 'dance'; saveSettings(); renderGameSel(); unlockAudio(); ensureSong(); };
+$('g-dance').onclick = () => { settings.game = 'dance'; saveSettings(); renderGameSel(); unlockAudio(); ensureSong(); loadPrincesses(); };
 bindDanceMenu();
-if (settings.game === 'dance') setTimeout(() => ensureSong().catch(() => {}), 500); // nạp sẵn bài đang chọn
+renderer.p3d = app.p3d; renderer.p3dQ = 0.75;
+if (settings.game === 'dance') setTimeout(() => { ensureSong().catch(() => {}); loadPrincesses(); }, 500); // nạp sẵn bài đang chọn + công chúa 3D
 renderGameSel();
 
 // ---------------- Wake lock / lifecycle ----------------
