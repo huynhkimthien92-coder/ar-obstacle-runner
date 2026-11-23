@@ -16,7 +16,7 @@ export const CONFIG = {
 
   CAMERA: { width: 960, height: 540, tvWidth: 960, tvHeight: 540, fps: 30 },
   // Ngưỡng tin cậy MediaPipe (mặc định của Google là 0.5) — hạ xuống để bám người ở xa / thiếu sáng tốt hơn
-  POSE: { detect: 0.4, presence: 0.4, track: 0.4 },
+  POSE: { detect: 0.5, presence: 0.5, track: 0.4 }, // phát hiện người mới chặt hơn một chút (đỡ nhận nhầm đồ vật); bám theo người đã thấy vẫn nhạy
   LOST_PAUSE_SEC: 2.0, // mất người liên tục bao lâu thì tạm dừng game
 
   // Ngưỡng nhận diện động tác (tỉ lệ theo chiều dài thân = vai→hông lúc hiệu chỉnh)

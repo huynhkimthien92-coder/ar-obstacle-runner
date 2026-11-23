@@ -13,6 +13,7 @@ import { PlayerTracker } from './players.js';
 import { TileGame, TileGeom } from './tiles.js';
 import { Cutouts } from './cutout.js';
 import { FruitGame } from './fruits.js';
+import { PresenceGate } from './personcheck.js';
 
 const $ = id => document.getElementById(id);
 const store = {
@@ -44,7 +45,7 @@ const app = {
   presentSince: 0, vdim: '', lag: null, lastCueId: 0, prevPresent: false, lostEvents: [],
   tracker: new PlayerTracker(4), tg: null, geom: null, vgeom: null, tickSec: -1, resultShown: false,
   cutouts: new Cutouts(), mainIdx: 0, ps: null, baseFoot: null,
-  fg: null, hands: {}, fps: null, arm: {}, ptr: null,
+  fg: null, hands: {}, fps: null, arm: {}, ptr: null, gate: new PresenceGate(),
 };
 // Nội dung chữ vẽ lên canvas cho TV (HUD, gợi ý, đếm ngược, bảng thông báo)
 const ui = { hud: null, hint: '', big: null, panel: null, corner: '', cornerColor: null, cue: null, tiles: null };
@@ -188,6 +189,7 @@ function processPose(now) {
   const r = app.pose.detect(video);
   if (!r) return;
   bench.onPose(r.ms, !!r.landmarks);
+  if (r.rejected?.length) { app.rejLast = r.rejected[0]; app.rejAt = now; app.rejN = (app.rejN || 0) + 1; }
   // Người "chính" (hiệu chỉnh, giơ tay bắt đầu, chơi Vượt chướng ngại): bám theo người chính của frame trước,
   // không đổi qua lại khi có nhiều người trong khung.
   let main = r.landmarks;
@@ -198,6 +200,10 @@ function processPose(now) {
   if (main) { app.primaryC = { x: (main[11].x + main[12].x) / 2, y: (main[11].y + main[12].y) / 2 }; app.primaryAt = now; }
   app.mainIdx = Math.max(0, r.all.indexOf(main));
   if (r.masks && (renderer.look === 'game' || renderer.look === 'fruit')) app.cutouts.update(r.frame, r.masks, r.all);
+  // người chính phải xuất hiện ổn định ~0,45 s mới tính (lọc đồ vật bị nhận nhầm thoáng qua)
+  const fr = app.pose.frame;
+  main = app.gate.update(main, now, fr ? fr.width / fr.height : 16 / 9);
+  if (!main) app.mainIdx = -1;
   const sm = smoother.apply(main, now);
   app.raw = sm;
   app.pts = sm ? sm.map(app.mapper) : null;
@@ -1100,7 +1106,7 @@ function debugText() {
     `${app.pose?.model ?? '-'} / ${app.pose?.delegate ?? '-'} ${bench.info.video ?? ''}`,
     `out ${settings.output} lag ${lagMs()} ms${link.rtt ? ' rtt ' + Math.round(link.rtt) : ''}`,
     `lane ${s.lane} x=${s.laneX.toFixed(2)} rise ${s.rise.toFixed(2)} drop ${s.drop.toFixed(2)}`,
-    `${s.airborne ? 'AIR ' : ''}${s.ducking ? 'DUCK ' : ''}${s.handsUp ? 'HANDS ' : ''}${s.coasting ? 'COAST ' : ''}${motion.mode} dist ${s.distance.hint} hips ${s.hipsSeen ? 'y' : 'n'} lost10s ${app.lostEvents.length}`,
+    `${s.airborne ? 'AIR ' : ''}${s.ducking ? 'DUCK ' : ''}${s.handsUp ? 'HANDS ' : ''}${s.coasting ? 'COAST ' : ''}${motion.mode} dist ${s.distance.hint} hips ${s.hipsSeen ? 'y' : 'n'} lost10s ${app.lostEvents.length} rej ${app.rejN || 0}${app.rejAt && performance.now() - app.rejAt < 1500 ? ' (' + app.rejLast + ')' : ''}`,
   ].join('\n');
 }
 

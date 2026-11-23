@@ -1,5 +1,6 @@
 // Wrapper MediaPipe Pose Landmarker (free, chạy hoàn toàn trên máy người chơi — không gửi ảnh lên server).
 import { CONFIG } from './config.js';
+import { plausiblePerson } from './personcheck.js';
 
 export const LM = {
   NOSE: 0, L_SH: 11, R_SH: 12, L_EL: 13, R_EL: 14, L_WR: 15, R_WR: 16,
@@ -60,10 +61,15 @@ export class PoseEngine {
     // mặt nạ phải chép ra TRƯỚC khi close() (bộ nhớ của MediaPipe bị thu hồi sau đó)
     const masks = this.seg && res?.segmentationMasks ? res.segmentationMasks.map(m => ({ w: m.width, h: m.height, data: m.getAsFloat32Array() })) : null;
     res?.close?.();
+    // bỏ khung xương "giả" (đồ vật bị nhận nhầm là người); giữ mặt nạ đi kèm đúng thứ tự
+    const ar = fw / fh, keep = all.map((lm, i) => plausiblePerson(lm, ar, masks?.[i]));
+    this.rejected = keep.filter(k => !k.ok).map(k => k.reason);
+    const allOk = all.filter((_, i) => keep[i].ok), masksOk = masks ? masks.filter((_, i) => keep[i].ok) : null;
+    all.length = 0; all.push(...allOk);
     // người "chính" (điều khiển menu / game chạy): người có vai gần giữa khung nhất
     let landmarks = null, best = Infinity;
     for (const lm of all) { const d = Math.abs((lm[11].x + lm[12].x) / 2 - 0.5); if (d < best) { best = d; landmarks = lm; } }
-    return { landmarks, all, masks, frame: this.frame, ms, ts };
+    return { landmarks, all, masks: masksOk, frame: this.frame, ms, ts, rejected: this.rejected };
   }
 
   /** Bật/tắt mặt nạ tách người (chỉ cần ở kiểu hiển thị "Khung cảnh game"). */

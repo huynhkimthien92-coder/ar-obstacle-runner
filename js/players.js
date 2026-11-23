@@ -2,6 +2,7 @@
 // MediaPipe trả về tối đa N bộ khung xương mỗi frame nhưng KHÔNG có ID → tự ghép theo vị trí gần nhất giữa các frame.
 import { PoseSmoother } from './filters.js';
 import { LM } from './pose.js';
+import { CHECK, gapFor } from './personcheck.js';
 
 export const PLAYER_COLORS = ['#00e5ff', '#ff9f1c', '#c77dff', '#7dffb0'];
 const vis = (p, m = 0.5) => !!p && p.v >= m;
@@ -17,6 +18,8 @@ export class PlayerTracker {
    * @param mapper  hàm đổi toạ độ video → màn hình
    */
   update(all, mapper, W, H, t) {
+    if (this.tick) { const d = Math.min(3000, t - this.tick); this.dt = this.dt ? this.dt * 0.9 + d * 0.1 : d; } // nhịp nhận diện
+    this.tick = t;
     const dets = (all || []).map((lm, idx) => {
       const ls = lm[LM.L_SH], rs = lm[LM.R_SH];
       if (!vis(ls, 0.35) || !vis(rs, 0.35)) return null;
@@ -45,7 +48,7 @@ export class PlayerTracker {
       const p = missing || this._new();
       usedP.add(p); this._assign(p, dets[i], mapper, W, H, t);
     }
-    for (const p of this.list) if (!usedP.has(p)) p.present = t - p.lastSeen < 600; // khuất < 0.6s vẫn tính có mặt
+    for (const p of this.list) if (!usedP.has(p)) p.present = p.confirmed && t - p.lastSeen < 600; // khuất < 0.6s vẫn tính có mặt
     this.list = this.list.filter(p => t - p.lastSeen < (this.keep.has(p.id) ? 15000 : 1500));
     return this.list;
   }
@@ -53,7 +56,7 @@ export class PlayerTracker {
   _new() {
     const used = new Set(this.list.map(p => p.color));
     const color = PLAYER_COLORS.find(c => !used.has(c)) || '#ffffff';
-    const p = { id: this.nextId++, color, smoother: new PoseSmoother(), present: false, lastSeen: 0, c: { x: 0, y: 0 } };
+    const p = { id: this.nextId++, color, smoother: new PoseSmoother(), present: false, lastSeen: 0, firstSeen: 0, confirmed: false, c: { x: 0, y: 0 } };
     this.list.push(p);
     return p;
   }
@@ -61,7 +64,10 @@ export class PlayerTracker {
   _assign(p, det, mapper, W, H, t) {
     const raw = p.smoother.apply(det.lm, t);
     const pts = raw.map(mapper);
-    p.raw = raw; p.pts = pts; p.c = det.c; p.lastSeen = t; p.present = true; p.maskIdx = det.idx;
+    // người mới (hoặc mất dấu lâu) phải xuất hiện liên tục ~0,45 s mới tính là có mặt → đồ vật lóe lên không thành "người"
+    if (!p.firstSeen || (!this.keep.has(p.id) && t - p.lastSeen > gapFor(this.dt))) { p.firstSeen = t; p.confirmed = this.keep.has(p.id); }
+    if (t - p.firstSeen >= CHECK.confirmMs) p.confirmed = true;
+    p.raw = raw; p.pts = pts; p.c = det.c; p.lastSeen = t; p.present = p.confirmed; p.maskIdx = det.idx;
     // Điểm chân trên sàn: giữa 2 mắt cá; không thấy chân thì ước lượng từ hông/vai
     const la = pts[LM.L_AN], ra = pts[LM.R_AN], lh = pts[LM.L_HIP], rh = pts[LM.R_HIP], ls = pts[LM.L_SH], rs = pts[LM.R_SH];
     if (vis(la) && vis(ra)) { p.feet = { x: (la.x + ra.x) / 2, y: Math.max(la.y, ra.y) }; p.feetSeen = true; }

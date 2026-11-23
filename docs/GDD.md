@@ -95,6 +95,7 @@ Thời lượng phiên ngắn là cố ý: vận động toàn thân mệt nhanh
 
 ## Changelog
 - v0.1 (23/11/2026): bản đầu, 5 loại chướng ngại + sao, 3 tier, tutorial 6 bước.
+- v0.9 (23/11/2026): lọc "người giả" cho cả 3 game — khung xương phải giống người (rõ mặt + vai, đầu trên vai, tỉ lệ thân/tay hợp lý, nằm trong mặt nạ người) và phải xuất hiện liên tục ≥ 0,45 s, không rung loạn, mới tính là có người (js/personcheck.js). Ngưỡng phát hiện người mới 0,4 → 0,5.
 - v0.8 (23/11/2026): Chém trái cây — lưỡi chém vệt sáng; chế độ 2 người đối kháng.
 - v0.7 (23/11/2026): game thứ ba **Chém trái cây** (người thu nhỏ ở đáy, trời cao, lưỡi chém theo hướng vươn tay so với vai).
 - v0.6 (23/11/2026): kiểu hiển thị **Khung cảnh game** (mặc định): tách người khỏi nền bằng mặt nạ segmentation của MediaPipe, thu nhỏ theo **Cỡ người** (mặc định 42% chiều cao màn hình), đặt chân lên đường đua / lưới ô ảo; nền phòng thay bằng khung cảnh game → đồ hoạ không còn bị môi trường làm mờ, không cần lùi xa trong phòng chật. Kiểu **Thấy phòng thật** có thanh làm tối nền. Màn chỉnh góc / hiệu chỉnh vẫn hiện phòng thật.
