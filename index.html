@@ -37,7 +37,12 @@
   <section id="scr-menu" class="screen active">
     <div class="card">
       <h1>AR <span>Obstacle</span> Runner</h1>
-      <p class="sub">Điện thoại là máy chơi + camera, TV là màn hình. Dùng chính cơ thể bạn: <b>bước</b> né tường, <b>nhảy</b> qua hố lửa, <b>ngồi</b> tránh laser, <b>giơ tay</b> hái sao.</p>
+      <p class="sub">Điện thoại là máy chơi + camera, TV là màn hình. Chơi bằng chính cơ thể bạn.</p>
+      <div class="seg" role="radiogroup" aria-label="Chọn trò chơi">
+        <button id="g-runner" class="seg-btn" role="radio">🏃 Vượt chướng ngại</button>
+        <button id="g-tiles" class="seg-btn" role="radio">🔥 Ô an toàn<small>1–4 người</small></button>
+      </div>
+      <p id="game-desc" class="tiny"></p>
       <button id="btn-tv" class="btn primary">📺 Chơi trên TV / máy chiếu</button>
       <button id="btn-cam" class="btn">📱 Chơi trên màn hình điện thoại</button>
       <button id="btn-manual" class="btn small">👆 Thử bằng vuốt / phím (không camera)</button>
@@ -140,6 +145,8 @@
       <tr><td>🔴 Laser</td><td>Ngồi xuống</td></tr>
       <tr><td>⭐ Ngôi sao</td><td>Giơ tay lên cao khi sao tới</td></tr>
     </table>
+    <h3>🔥 Ô an toàn (1–4 người)</h3>
+    <p class="tiny">Sàn trước camera được chia lưới ô. Mỗi vòng các ô đổi màu ngẫu nhiên: hết giờ ai đứng trên <b style="color:#7dffb0">ô xanh</b> thì an toàn, ai đứng trên <b style="color:#ff7b00">ô đỏ (hố lửa)</b> mất 1 mạng. Càng về sau càng ít ô xanh, ít thời gian, và từ vòng 6 ô có thể đổi giữa chừng. Nhiều người: hết mạng là bị loại, người cuối cùng thắng. Mọi người đứng vào khung <b>trước khi</b> đếm ngược kết thúc. Thấy được chân → lưới 3 hàng (tiến/lùi + sang ngang); không thấy chân → 1 dải ô ngang. Chơi bằng phím: ← → ↑ ↓.</p>
     <p class="tiny">Không có camera? Chế độ vuốt: vuốt trái/phải đổi làn, vuốt lên nhảy, vuốt xuống ngồi, chạm 2 lần = giơ tay. Bàn phím: ← → ↑ ↓ và H.</p>
     <p class="tiny">iPhone: Safari → nút Chia sẻ → "Thêm vào MH chính" để cài như app.</p>
     <p class="tiny warn">⚠ Chơi ở nơi an toàn, dọn đồ vật xung quanh. Trẻ em chơi cần người lớn trông.</p>

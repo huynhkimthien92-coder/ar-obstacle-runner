@@ -99,3 +99,8 @@ dialog h3 { margin: 4px 0 4px; font-size: 16px; }
 .url { color: #ffd23f; word-break: break-all; }
 .code-input { flex: 1; min-height: 52px; font-size: 26px; letter-spacing: 8px; text-align: center; border-radius: 14px; border: 1px solid rgba(0,229,255,.4);
   background: rgba(255,255,255,.06); color: #fff; margin: 10px 0; }
+
+.seg { display: flex; gap: 6px; background: rgba(255,255,255,.06); border-radius: 16px; padding: 4px; margin: 4px 0 4px; }
+.seg-btn { flex: 1; min-height: 52px; border: 0; border-radius: 12px; background: transparent; color: var(--fg); font: inherit; font-weight: 700; font-size: 15px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.seg-btn small { font-weight: 500; font-size: 11px; opacity: .75; }
+.seg-btn.on { background: linear-gradient(135deg, #00c2ff, #6a5cff); }

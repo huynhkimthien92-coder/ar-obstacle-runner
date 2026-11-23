@@ -2,6 +2,10 @@
 
 Game vận động kiểu console cho phòng khách: **điện thoại = máy chơi + camera** (đặt nằm ngang dưới TV, như Kinect), **TV / máy chiếu = màn hình**. MediaPipe nhận diện cơ thể ngay trên điện thoại; người chơi thấy chính mình trên màn hình lớn, **bước** né tường, **nhảy** qua hố lửa / rào, **ngồi** tránh laser, **giơ tay** hái sao. Webgame/PWA chạy Android & iOS — không server game, không app store, 0 đ.
 
+**2 trò chơi** (chọn ở menu):
+- 🏃 **Vượt chướng ngại** (1 người): bước né tường, nhảy qua hố lửa / rào, ngồi tránh laser, giơ tay hái sao.
+- 🔥 **Ô an toàn** (1–4 người): sàn trước camera thành lưới ô, mỗi vòng ô xanh/đỏ đổi ngẫu nhiên; hết giờ phải đứng trên ô xanh, ô đỏ là hố lửa. Người trụ lại cuối cùng thắng.
+
 **Chơi ngay trên điện thoại (không cần TV):** dựng máy dọc ngang tầm mắt, đứng gần ~1–1,5 m — game tự dùng khung nửa người (chỉ cần thấy đầu tới hông). Gợi ý động tác hiện thành viền màu + mũi tên lớn + âm báo nên không cần nhìn kỹ màn hình.
 
 **Đưa hình lên TV:** cáp HDMI · phản chiếu màn hình (Smart View / Chromecast / AirPlay) · hoặc màn hình phụ qua Wi-Fi (TV/laptop mở `display.html`, nhập mã 4 số). Chi tiết: **[docs/TV_SETUP.md](docs/TV_SETUP.md)**.
@@ -24,6 +28,8 @@ js/pose.js            MediaPipe Pose Landmarker (GPU→CPU), map toạ độ vid
 js/filters.js         One Euro filter chống rung landmark
 js/motion.js          landmark → làn / nhảy / ngồi / giơ tay / khoảng cách (thuần logic)
 js/levels.js          ★ bản đồ chướng ngại vật (chunk)
+js/tiles.js           ★ game Ô an toàn: lưới ô phối cảnh, vòng chơi, độ khó, mạng, loại
+js/players.js         theo dõi tối đa 4 người (gán ID giữa các khung hình, điểm chân trên sàn)
 js/game.js            vòng lặp thế giới, spawn, va chạm, điểm (thuần logic)
 js/render.js          Canvas 2D: đường chạy phối cảnh, lửa, laser, khung xương, hiệu ứng
 js/audio.js           âm thanh tổng hợp WebAudio (0 file asset)

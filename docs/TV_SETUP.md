@@ -34,6 +34,13 @@ Hình trên TV luôn chậm hơn thực tế một chút. Nếu không bù, bạ
 3. Khi chơi, va chạm được xét **muộn hơn đúng bằng độ trễ đó**, cộng cửa sổ chấp nhận: né sớm tới 250 ms hoặc muộn tới 120 ms vẫn tính là qua.
 - Đo lại: Cài đặt → **⏱ Đo lại độ trễ ở lượt sau**, hoặc nút **⏱ Đo độ trễ** ở màn hiệu chỉnh. Có thể chỉnh tay bằng thanh trượt 0–600 ms.
 
+## Game "Ô an toàn" với nhiều người
+- Cần khoảng trống rộng hơn: ~3 m ngang × 2 m sâu, để mọi người chạy giữa các ô mà không va nhau.
+- Điện thoại đặt thấp ngang hông và **thấy được chân** → lưới 3 hàng (đi tiến/lùi + sang ngang). Không thấy chân → chỉ có 1 dải ô ngang.
+- **Mọi người đứng vào khung trước khi đếm ngược kết thúc**: chỉ ai có mặt lúc đó mới được tính (P1–P4, mỗi người một màu).
+- Đứng **cách nhau ra**, đừng đứng sát hay che nhau, nếu không game có thể nhầm người.
+- Càng nhiều người thì điện thoại càng phải làm việc nhiều hơn (nhận diện từng người) → máy yếu có thể chậm hơn. Game ô diễn ra chậm nên vẫn chơi được.
+
 ## Gợi ý động tác (nhìn / nghe từ xa)
 Khoảng 1,3 s trước khi chướng ngại vật tới, viền màn hình đổi màu, hiện mũi tên lớn và có âm báo riêng:
 | Màu viền | Biểu tượng | Âm báo | Làm gì |

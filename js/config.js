@@ -32,6 +32,7 @@ export const CONFIG = {
     torsoPerShoulder: 1.4,             // hông khuất: thân ≈ 1.4 × bề rộng vai
     coastMs: 600,                      // mất dấu < 0.6s → giữ nguyên trạng thái (không giật / không tính mất người)
     nearShoulderMin: 0.15, nearShoulderMax: 0.5, // chế độ đứng gần: bề rộng vai / bề ngang khung
+    rebaseMs: 400, rebaseShoulderJump: 0.25, // quay lại khung / đổi chỗ đột ngột → lấy lại baseline trong 0.4s
     calibSamples: 8, calibMs: 900,
   },
 

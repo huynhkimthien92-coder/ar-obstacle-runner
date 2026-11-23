@@ -50,6 +50,13 @@
 - [ ] Ra khỏi khung > 1 s → TV hiện "Không thấy bạn"; quay lại → đếm ngược rồi chơi tiếp
 - [ ] Chơi liên tục 15 phút có cắm sạc: máy có quá nóng / tụt FPS không (ghi lại)
 
+## Game "Ô an toàn"
+- [ ] 1 người, thấy chân: lưới 3 hàng; bước tới/lùi/ngang thì vòng tròn dưới chân đổi đúng ô
+- [ ] Không thấy chân (đứng gần): dải 1 hàng, bước ngang đổi ô
+- [ ] 2–4 người: mỗi người đúng 1 màu/nhãn P1–P4, không bị đổi nhãn khi đi lại bình thường
+- [ ] Một người ra khỏi khung 5 s rồi quay lại: vẫn giữ nhãn cũ
+- [ ] Đo FPS nhận diện (debug) khi có 1 / 2 / 4 người — ghi lại theo máy
+
 ## Giảm rủi ro đã làm sẵn trong code
 | Rủi ro | Cách xử lý |
 |---|---|

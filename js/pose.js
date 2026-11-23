@@ -33,7 +33,7 @@ export class PoseEngine {
           minPoseDetectionConfidence: CONFIG.POSE.detect, minPosePresenceConfidence: CONFIG.POSE.presence, minTrackingConfidence: CONFIG.POSE.track,
           outputSegmentationMasks: false,
         });
-        this.delegate = delegate; this.model = model;
+        this.delegate = delegate; this.model = model; this.numPoses = 1;
         return this;
       } catch (e) { lastErr = e; console.warn('[pose] delegate', delegate, 'lỗi:', e); }
     }
@@ -49,10 +49,18 @@ export class PoseEngine {
     const t0 = performance.now();
     const res = this.landmarker.detectForVideo(video, ts);
     const ms = performance.now() - t0;
-    const src = res?.landmarks?.[0];
-    const landmarks = src ? src.map(p => ({ x: p.x, y: p.y, z: p.z, v: p.visibility ?? 1 })) : null;
+    const all = (res?.landmarks || []).map(lm => lm.map(p => ({ x: p.x, y: p.y, z: p.z, v: p.visibility ?? 1 })));
     res?.close?.();
-    return { landmarks, ms, ts };
+    // người "chính" (điều khiển menu / game chạy): người có vai gần giữa khung nhất
+    let landmarks = null, best = Infinity;
+    for (const lm of all) { const d = Math.abs((lm[11].x + lm[12].x) / 2 - 0.5); if (d < best) { best = d; landmarks = lm; } }
+    return { landmarks, all, ms, ts };
+  }
+
+  /** Game "Ô an toàn" cần thấy nhiều người cùng lúc. */
+  async setNumPoses(n) {
+    if (!this.landmarker || this.numPoses === n) return;
+    try { await this.landmarker.setOptions({ numPoses: n }); this.numPoses = n; } catch (e) { console.warn('[pose] setNumPoses', e); }
   }
 
   close() { this.landmarker?.close(); this.landmarker = null; }

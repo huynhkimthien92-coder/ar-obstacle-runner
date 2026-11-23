@@ -10,7 +10,7 @@ function body({ cx = 200, hipY = 520, torso = 160, handsUp = false, feet = true 
   const shY = hipY - torso;
   const set = (i, x, y, v = 0.99) => { pts[i] = { x, y, v }; };
   set(0, cx, shY - torso * 0.45);                         // mũi
-  set(11, cx + 40, shY); set(12, cx - 40, shY);           // vai
+  set(11, cx + torso * 0.25, shY); set(12, cx - torso * 0.25, shY); // vai (rộng tỉ lệ theo thân)
   set(23, cx + 25, hipY); set(24, cx - 25, hipY);         // hông
   set(15, cx + 60, handsUp ? shY - torso * 0.8 : hipY - 10); set(16, cx - 60, handsUp ? shY - torso * 0.8 : hipY - 10);
   const ankleY = hipY + torso * 1.5;
@@ -135,4 +135,24 @@ test('mất dấu < 0.6s: giữ nguyên trạng thái; lâu hơn mới tính m�
   assert.equal(m.state.airborne, true, 'đang nhảy mà mờ hình → vẫn tính đang nhảy');
   m.update(null, null, W, H, (t += 500));
   assert.equal(m.state.present, false);
+});
+
+test('quay lại khung ở chỗ khác: không báo nhảy/ngồi nhầm, rồi vẫn nhận nhảy thật', () => {
+  let [m, t] = calibrated();
+  for (let i = 0; i < 30; i++) m.update(null, null, W, H, (t += 33));      // rời khung 1s
+  assert.equal(m.state.present, false);
+  // quay lại: xa hơn (thân ngắn hơn) và hông cao hơn 30% thân cũ — trước đây sẽ bị tính là "nhảy"
+  const back = { hipY: 470, torso: 130, cx: 260 };
+  for (let i = 0; i < 15; i++) {
+    const [p, r] = body(back); m.update(p, r, W, H, (t += 33));
+    assert.equal(m.state.airborne, false, `khung ${i}`); assert.equal(m.state.ducking, false);
+  }
+  const [p, r] = body({ ...back, hipY: 470 - 130 * 0.25 }); m.update(p, r, W, H, (t += 33));
+  assert.equal(m.state.airborne, true, 'nhảy thật sau khi đã lấy lại baseline');
+});
+
+test('đổi chỗ đột ngột (vai rộng hơn >25%) không bị tính là ngồi', () => {
+  let [m, t] = calibrated();
+  // vai hạ 0.44 thân cũ nhưng là do đổi chỗ (vai rộng hơn 31%), không phải ngồi
+  for (let i = 0; i < 10; i++) { const [p, r] = body({ hipY: 640, torso: 210 }); m.update(p, r, W, H, (t += 33)); assert.equal(m.state.ducking, false); }
 });

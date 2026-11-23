@@ -23,6 +23,7 @@ export class MotionTracker {
   reset() {
     this.base = null; this.calib = []; this.calibrating = false;
     this.airSince = 0; this.duckSince = 0; this.prevAnchorY = null; this.lastSeen = -1e9;
+    this.rebase = null; // {until, samples[]} — cửa sổ lấy lại baseline sau khi người chơi quay lại / đổi chỗ đột ngột
     this.state = {
       present: false, coasting: false, fullBody: false, hipsSeen: false, calibrated: false, calibProgress: 0,
       lane: 1, laneX: 0.5, airborne: false, ducking: false, handsUp: false, oneHandUp: false,
@@ -50,6 +51,7 @@ export class MotionTracker {
     if (!pts || !raw) return this._lost(t);
     const ls = pts[LM.L_SH], rs = pts[LM.R_SH], lh = pts[LM.L_HIP], rh = pts[LM.R_HIP];
     if (!vis(ls, c.shoulderVis) || !vis(rs, c.shoulderVis)) return this._lost(t);
+    const wasGone = !s.present;
     s.present = true; s.coasting = false; this.lastSeen = t;
 
     const sh = mid(ls, rs);
@@ -90,16 +92,34 @@ export class MotionTracker {
           hipY: median(this.calib.map(k => k.hipY)),
           shY: median(this.calib.map(k => k.shY)),
           torso: median(this.calib.map(k => k.torso)),
+          shW: 0,
         };
-        this.calibrating = false;
+        this.calibrating = false; this.rebase = null;
       }
     }
     this.prevAnchorY = anchorY;
     s.calibrated = !!this.base;
     if (!this.base) return s;
 
-    // --- Nhảy / ngồi: so với baseline, chuẩn hoá theo chiều dài thân ---
+    // --- Nhận diện lại: quay vào khung sau khi mất dấu, hoặc bề rộng vai đổi đột ngột >25% (đổi chỗ / người khác bước vào)
+    //     → KHÔNG so với tư thế cũ; lấy lại baseline từ vài khung đầu để không báo nhảy/ngồi nhầm.
     const b = this.base;
+    if (!this.rebase && (wasGone || (b.shW && Math.abs(shW - b.shW) / b.shW > c.rebaseShoulderJump))) {
+      this.rebase = { until: t + c.rebaseMs, samples: [] };
+    }
+    if (this.rebase) {
+      this.rebase.samples.push({ hipY: hip.y, shY: sh.y, torso, shW });
+      s.airborne = s.ducking = false; s.rise = s.drop = 0; s.rebasing = true;
+      if (t >= this.rebase.until && this.rebase.samples.length >= 2) {
+        const k = this.rebase.samples;
+        this.base = { hipY: median(k.map(q => q.hipY)), shY: median(k.map(q => q.shY)), torso: median(k.map(q => q.torso)), shW: median(k.map(q => q.shW)) };
+        this.rebase = null; s.rebasing = false;
+      }
+      return s;
+    }
+    if (!b.shW) b.shW = shW;
+
+    // --- Nhảy / ngồi: so với baseline, chuẩn hoá theo chiều dài thân ---
     s.rise = hipsOk ? (b.hipY - hip.y) / b.torso : (b.shY - sh.y) / b.torso;
     s.drop = (sh.y - b.shY) / b.torso;
 
@@ -111,11 +131,11 @@ export class MotionTracker {
 
     // Bảo vệ trôi baseline (người tiến/lùi, điện thoại xê dịch): trạng thái kéo dài bất thường → hiệu chỉnh lại
     if ((s.airborne && t - this.airSince > c.maxAirborneMs) || (s.ducking && t - this.duckSince > c.maxDuckMs)) {
-      this.base = { hipY: hip.y, shY: sh.y, torso };
+      this.base = { hipY: hip.y, shY: sh.y, torso, shW };
       s.airborne = s.ducking = false; s.rise = s.drop = 0;
     } else if (!s.airborne && !s.ducking && Math.abs(s.rise) < 0.1 && Math.abs(s.drop) < 0.1) {
       const a = c.adaptRate;
-      b.hipY += (hip.y - b.hipY) * a; b.shY += (sh.y - b.shY) * a; b.torso += (torso - b.torso) * a;
+      b.hipY += (hip.y - b.hipY) * a; b.shY += (sh.y - b.shY) * a; b.torso += (torso - b.torso) * a; b.shW += (shW - b.shW) * a;
     }
     return s;
   }

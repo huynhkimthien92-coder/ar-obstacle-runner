@@ -29,15 +29,26 @@ export class Renderer {
       this.cv.width = Math.round(this.W * dpr); this.cv.height = Math.round(this.H * dpr);
       this.dpr = dpr;
     }
-    this.hz = this.H * R.horizon;
     this.u = Math.max(1, Math.min(this.W, this.H) / 500); // hệ số cỡ chữ/nét: to hơn trên TV
+    this._horizon();
+  }
+
+  /**
+   * Tỉ lệ thế giới theo CƠ THỂ người chơi: groundY = mặt đất (ngay dưới chân, px), ppm0 = số px cho 1 m ở chỗ người đứng.
+   * Nhờ vậy rào thấp ngang gối, laser ngang ngực, tường cao hơn đầu, sao ở tầm với tay — đúng với người thật
+   * (trẻ em thấp hơn thì mọi thứ cũng thấp theo). null = dùng mặc định (chơi bằng phím).
+   */
+  setWorld(groundY, ppm0) { this.groundY = groundY; this.ppm0 = ppm0; this._horizon(); }
+  _horizon() {
+    const g = this.groundY ?? this.H;
+    this.hz = Math.max(this.H * 0.1, Math.min(this.H * R.horizon, g - this.H * 0.32)); // chân trời luôn đủ cao để thấy vật từ xa
   }
 
   // ---- phép chiếu phối cảnh: z (mét phía trước) → hệ số s, toạ độ màn hình ----
   s(z) { return R.focal / (R.focal + Math.max(z, -R.focal * 0.8)); }
-  gy(s) { return this.hz + (this.H - this.hz) * s; }
+  gy(s) { return this.hz + ((this.groundY ?? this.H) - this.hz) * s; }
   lx(lane, s) { return this.W / 2 + (lane - 1) * (this.W / 3) * s; }
-  ppm(s) { return this.H * R.ppmAtPlayer * s; }
+  ppm(s) { return (this.ppm0 ?? this.H * R.ppmAtPlayer) * s; }
 
   fx(kind, ob) {
     const s = this.s(0.5), y = this.gy(s) - this.ppm(s) * 0.7;
@@ -103,6 +114,19 @@ export class Renderer {
       text('♥'.repeat(Math.max(0, h.lives)) + '♡'.repeat(Math.max(0, h.maxLives - h.lives)), 28 * u, 46 * u, 46, '#ff4d6d', 'left');
       if (h.combo > 1) text(`x${h.combo}`, 28 * u, 100 * u, 40, '#ffd23f', 'left');
     }
+    if (ui.tiles) {
+      const T = ui.tiles;
+      if (T.phase === 'move') {
+        const k = T.moveDur ? T.timeLeft / T.moveDur : 0;
+        ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(W * 0.2, 128 * u, W * 0.6, 14 * u);
+        ctx.fillStyle = k < 0.3 ? '#ff5a3c' : '#7dffb0'; ctx.fillRect(W * 0.2, 128 * u, W * 0.6 * k, 14 * u);
+        text(String(Math.ceil(T.timeLeft)), W / 2, 74 * u, 92, k < 0.3 ? '#ff5a3c' : '#fff');
+        text('Tìm Ô XANH!', W / 2, 168 * u, 30, '#7dffb0');
+      }
+      text(`Vòng ${T.round}`, 24 * u, 36 * u, 30, '#d6e4ff', 'left');
+      T.players.forEach((p, i) => text(`P${p.n} ${p.alive ? '♥'.repeat(p.lives) : '✖ bị loại'}`, 24 * u, (80 + i * 40) * u, 28, p.alive ? p.color : '#888', 'left'));
+      if (T.solo && T.best != null) text(`Kỷ lục: ${T.best} vòng`, W - 24 * u, 92 * u, 24, '#d6e4ff', 'right', 600);
+    }
     if (ui.cue) this.cue(ui.cue, tMs, u, text);
     else if (ui.hint) text(ui.hint, W / 2, H * 0.25, 54);
     if (ui.big && tMs - ui.big.at < 950) {
@@ -146,6 +170,64 @@ export class Renderer {
     if (cue.action === 'move') text(`${cue.dir < 0 ? C[1] + ' ' : ''}${C[2]}${cue.dir > 0 ? ' ' + C[1] : ''}`, W / 2, y, size * 0.8, C[0]);
     else { text(C[1], W / 2, y, size, C[0]); text(C[2], W / 2, y + size * u * 0.85, size * 0.42, C[0]); }
     ctx.restore();
+  }
+
+  /** Khung xương tô 1 màu (nhiều người chơi). */
+  skeletonColored(pts, color, alpha = 0.95, label = '') {
+    const { ctx } = this;
+    ctx.save(); ctx.globalAlpha = alpha; ctx.lineCap = 'round'; ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(4, Math.min(this.W, this.H) * 0.014);
+    ctx.beginPath();
+    for (const [a, b] of SKELETON) { const A = pts[a], B = pts[b]; if (A.v < 0.5 || B.v < 0.5) continue; ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); }
+    ctx.stroke();
+    if (label) {
+      const n = pts[0], y = (n.v > 0.4 ? n.y : Math.min(pts[11].y, pts[12].y)) - 40 * this.u, x = n.v > 0.4 ? n.x : (pts[11].x + pts[12].x) / 2;
+      ctx.font = `900 ${Math.round(26 * this.u)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.strokeText(label, x, y); ctx.fillStyle = color; ctx.fillText(label, x, y);
+    }
+    ctx.restore();
+  }
+
+  /** Game "Ô an toàn": lưới ô phối cảnh trên sàn, ô đỏ là hố lửa, ô xanh phát sáng; người chơi tô màu riêng. */
+  tilesScene(dt, tSec, tg, geom, players, roster, manualPos) {
+    const { ctx } = this;
+    this.clear();
+    const flick = tg.phase === 'reveal' || tg.phase === 'idle';
+    const urgent = tg.phase === 'move' && tg.timeLeft < 1.2;
+    for (let r = 0; r < geom.rows; r++) for (let c = 0; c < geom.cols; c++) {
+      const q = geom.quad(r, c), ce = geom.center(r, c);
+      let col = tg.colorAt(r, c);
+      if (flick) col = tg.phase === 'idle' ? 'n' : ((r * 7 + c * 13 + Math.floor(tSec * 9)) % 3 === 0 ? 'r' : 'g');
+      ctx.beginPath(); q.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath();
+      if (col === 'g') {
+        const pulse = urgent ? 0.25 + 0.2 * Math.sin(tSec * 18) : 0;
+        ctx.fillStyle = `rgba(40,230,120,${0.3 + pulse})`; ctx.fill();
+        ctx.strokeStyle = '#7dffb0'; ctx.lineWidth = Math.max(2, 4 * this.u); ctx.stroke();
+      } else if (col === 'r') {
+        ctx.fillStyle = 'rgba(110,12,0,0.55)'; ctx.fill();
+        ctx.strokeStyle = 'rgba(255,90,40,0.8)'; ctx.lineWidth = Math.max(2, 3 * this.u); ctx.stroke();
+        if (!flick) this.fire(ce.x, ce.y + ce.h * 0.15, ce.w * 0.4, Math.max(ce.h * 1.3, ce.w * 0.35), tSec, r * 7 + c);
+      } else {
+        ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2; ctx.stroke();
+      }
+    }
+    const inRoster = id => roster.find(p => p.id === id);
+    for (const p of players) {
+      if (!p.present || !p.pts) continue;
+      const ro = inRoster(p.id);
+      const color = ro ? (ro.alive ? p.color : '#777') : 'rgba(255,255,255,0.6)';
+      this.skeletonColored(p.pts, color, ro && !ro.alive ? 0.45 : 0.95, ro ? `P${ro.n}` : '');
+      if (ro && ro.alive) {
+        ctx.strokeStyle = color; ctx.lineWidth = 5 * this.u;
+        ctx.beginPath(); ctx.ellipse(p.feet.x, p.feet.y, 34 * this.u, 12 * this.u, 0, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+    if (manualPos) { // chơi bằng phím: con trỏ tròn trên ô
+      const ce = geom.center(manualPos.r, manualPos.c);
+      ctx.fillStyle = '#00e5ff'; ctx.beginPath(); ctx.ellipse(ce.x, ce.y, ce.w * 0.22, ce.h * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = `900 ${Math.round(22 * this.u)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('P1', ce.x, ce.y);
+    }
+    this.effects(dt);
   }
 
   /** Mini-game đo độ trễ: bóng rơi xuống vạch theo nhịp, người chơi nhảy đúng lúc chạm vạch. */

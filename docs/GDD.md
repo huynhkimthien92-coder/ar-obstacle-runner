@@ -50,6 +50,15 @@ Thời lượng phiên ngắn là cố ý: vận động toàn thân mệt nhanh
 - 3 mạng (PH). Bị đâm → bất tử 1.5 s (PH), combo về ×1, tốc độ lùi lại ~6 s ramp để người chơi hồi.
 - Tốc độ 7 → 15 m/s (PH), +0.045 m/s mỗi giây (PH). Không tăng tốc trong phần hướng dẫn.
 
+## 3b. Game thứ hai — "Ô an toàn" (1–4 người)
+- **Player fantasy:** trò chơi tập thể kiểu game show — cả nhà nhảy loạn xạ tìm chỗ đứng an toàn giữa sàn lửa.
+- **Cơ chế:** phần sàn trước camera chia lưới ô (thấy được chân: 3 hàng × 3–4 cột, đi tiến/lùi/ngang; chỉ thấy nửa người: 1 dải ô ngang). Mỗi vòng: xáo ô (0,9 s) → hiện ô xanh/đỏ, đếm ngược → hết giờ ai có điểm chân trên ô đỏ (hố lửa) hoặc không có trong khung thì mất 1 mạng → hiện kết quả (1,8 s) → vòng mới.
+- **Vì sao vẽ lưới theo hình camera được:** camera đứng yên nên mỗi điểm trên sàn luôn ở đúng một chỗ trên hình. Điểm chân trên màn hình chính là vị trí trên sàn → lưới vẽ đè lên sàn khớp với sàn thật, không cần đo phòng.
+- **Độ khó (PH):** thời gian 5 s → tối thiểu 2 s (−0,25 s/vòng); ô đỏ 34% → tối đa 80% (+5%/vòng); từ vòng 6 ô đổi màu 1 lần giữa chừng. Ô đang có người đứng có 80% khả năng hoá đỏ để buộc di chuyển. Luôn còn ít nhất 1 ô xanh cho mỗi người còn sống.
+- **Mạng:** 1 người = 3 mạng, điểm = số vòng sống sót (có kỷ lục). Nhiều người = 2 mạng/người, hết mạng bị loại, người cuối cùng thắng.
+- **Nhiều người:** MediaPipe nhận tối đa 4 bộ khung xương; game tự gán ID theo vị trí gần nhất giữa các khung hình. Người đã vào ván mà khuất tối đa 15 s rồi quay lại vẫn giữ đúng P1/P2. Ai có mặt lúc đếm ngược kết thúc mới được tính vào ván.
+- **Edge case:** 2 người đứng sát / che nhau → có thể bị đổi ID; không thấy ai lúc bắt đầu → chờ. Có bù độ trễ màn hình khi chốt kết quả.
+
 ## 4. Bảng kinh tế điểm (tuning)
 | Biến | Gốc | Min | Max | Lý do |
 |---|---|---|---|---|
@@ -75,5 +84,6 @@ Thời lượng phiên ngắn là cố ý: vận động toàn thân mệt nhanh
 
 ## Changelog
 - v0.1 (23/11/2026): bản đầu, 5 loại chướng ngại + sao, 3 tier, tutorial 6 bước.
+- v0.4 (23/11/2026): (1) **nhận diện lại** khi quay vào khung: không so với tư thế cũ mà lấy lại baseline trong 0,4 s (trước đây quay lại ở chỗ khác bị báo nhảy/ngồi nhầm); bộ đếm tạm dừng dùng đồng hồ thật. (2) **Tỉ lệ người – đường đua:** mặt đường đặt đúng ở chân người chơi, 1 m tính theo chiều cao thật của người đó → rào ngang gối, laser ngang ngực, tường cao hơn đầu (trẻ em thấp thì mọi thứ thấp theo). (3) **Game mới "Ô an toàn"** 1–4 người.
 - v0.3 (23/11/2026): playtest đầu tiên báo "chơi trên điện thoại phải đứng xa, không nhìn thấy, dễ mất dấu" → thêm **khung nửa người** cho màn hình điện thoại (đứng 1–1,5 m, chỉ cần đầu→hông), chỉ bắt buộc thấy 2 vai (hông suy ra từ vai), giữ trạng thái khi mất dấu < 0,6 s, chỉ tạm dừng sau 2 s mất người, hạ ngưỡng tin cậy MediaPipe xuống 0,4, camera 960×540, **gợi ý động tác nhìn/nghe được từ xa** (viền màn hình đổi màu + mũi tên lớn + âm báo riêng từng động tác).
 - v0.2 (23/11/2026): chuyển trọng tâm sang **điện thoại + TV/máy chiếu**: chế độ TV 16:9, 2 cách xuất hình (HDMI/phản chiếu, màn hình phụ Wi-Fi), đo & bù độ trễ, tự dừng/tiếp tục khi ra khỏi khung, thêm cửa sổ né muộn 120 ms.
