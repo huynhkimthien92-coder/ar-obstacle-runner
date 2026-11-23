@@ -1,6 +1,6 @@
 // Trang màn hình (TV có trình duyệt / laptop nối máy chiếu): hiện mã ghép, nhận stream từ điện thoại.
 import { CONFIG } from './config.js';
-import { loadPeer, peerOptions } from './link.js';
+import { loadPeer, peerOptions, iceDiag, HOTSPOT_TIP } from './link.js';
 
 const $ = id => document.getElementById(id);
 const v = $('v');
@@ -45,7 +45,25 @@ function create(Peer) {
   const code = String(1000 + Math.floor(Math.random() * 9000));
   peer = new Peer(CONFIG.PEER.prefix + code, peerOptions());
   peer.on('open', () => { retry = 0; $('code').textContent = code; status('Sẵn sàng — chờ điện thoại kết nối'); });
-  peer.on('connection', c => c.on('data', d => { if (d?.ping) try { c.send({ pong: d.ping }); } catch { /* */ } }));
+  peer.on('connection', c => {
+    status('📱 Điện thoại đang kết nối…');
+    c.on('data', d => { if (d?.ping) try { c.send({ pong: d.ping }); } catch { /* */ } });
+    c.on('open', () => status('✓ Đã nối với điện thoại — chờ hình…'));
+    // nếu 2 máy không nối trực tiếp được, báo ngay trên màn hình lớn
+    let waited = 0;
+    const watch = setInterval(async () => {
+      waited += 1;
+      const pc = c.peerConnection;
+      const bad = pc && (pc.iceConnectionState === 'failed' || pc.connectionState === 'failed');
+      if (c.open) { clearInterval(watch); return; }
+      if (bad || waited > 25) {
+        clearInterval(watch);
+        const d = await iceDiag(pc);
+        status(`⚠ Không nối trực tiếp được với điện thoại (router tách thiết bị hoặc khác mạng). ${HOTSPOT_TIP} [${d.local.join('/') || '-'} ↔ ${d.remote.join('/') || '-'}]`);
+        $('status').style.opacity = 1; $('status').style.fontSize = '2.6vh'; $('status').style.maxWidth = '90vw';
+      }
+    }, 1000);
+  });
   peer.on('call', call => {
     try { current?.close(); } catch { /* */ }
     current = call;

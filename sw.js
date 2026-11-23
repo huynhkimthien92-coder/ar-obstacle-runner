@@ -1,6 +1,6 @@
 // Service worker: app shell cache-first + cache file MediaPipe (wasm ~14MB, model ~5MB) để lần sau chơi offline.
 // Đổi VERSION mỗi lần deploy để người dùng nhận bản mới.
-const VERSION = 'aor-v1.5.0';
+const VERSION = 'aor-v1.5.1';
 const SHELL = [
   './', './index.html', './display.html', './css/style.css', './manifest.webmanifest',
   './js/main.js', './js/config.js', './js/camera.js', './js/pose.js', './js/filters.js', './js/motion.js',

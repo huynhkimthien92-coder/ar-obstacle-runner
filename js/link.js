@@ -15,6 +15,29 @@ export function loadPeer() {
 }
 export const peerOptions = () => ({ debug: 0, ...(CONFIG.PEER.server || {}) });
 
+/** Đọc getStats để biết vì sao 2 máy không nối trực tiếp được (dùng khi lỗi). */
+export async function iceDiag(pc) {
+  const out = { local: new Set(), remote: new Set(), state: pc?.connectionState || pc?.iceConnectionState || 'none', pairs: 0 };
+  try {
+    (await pc.getStats()).forEach(r => {
+      if (r.type === 'local-candidate') out.local.add(r.candidateType);
+      if (r.type === 'remote-candidate') out.remote.add(r.candidateType);
+      if (r.type === 'candidate-pair') out.pairs++;
+    });
+  } catch { /* */ }
+  return { local: [...out.local], remote: [...out.remote], state: out.state, pairs: out.pairs };
+}
+
+export const HOTSPOT_TIP = 'Cách chắc ăn nhất: bật "Điểm truy cập cá nhân" (hotspot) trên điện thoại, cho laptop/TV kết nối vào Wi-Fi đó, tải lại trang màn hình rồi nhập mã mới.';
+
+function explainIce(d) {
+  const why = [];
+  if (!d.remote.length) why.push('Không nhận được địa chỉ mạng của TV/laptop.');
+  else if (!d.local.includes('srflx') && !d.local.includes('relay')) why.push('Mạng đang chặn kết nối ra ngoài (STUN/TURN).');
+  why.push('Thường do router bật "tách thiết bị" (AP/client isolation, hay gặp ở Wi-Fi khách hoặc Wi-Fi quán), hoặc 2 máy không cùng một mạng (laptop cắm dây LAN, Wi-Fi 2,4 GHz và 5 GHz bị tách).');
+  return `Điện thoại và TV/laptop không nối trực tiếp được với nhau. ${why.join(' ')} ${HOTSPOT_TIP}\n[chẩn đoán: điện thoại ${d.local.join('/') || '-'} · màn hình ${d.remote.join('/') || '-'} · ${d.state}]`;
+}
+
 const withTimeout = (p, ms, msg) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms))]);
 
 function waitConnected(pc, ms) {
@@ -46,10 +69,35 @@ export class Link {
     const id = CONFIG.PEER.prefix + code;
     onStatus('Đang tìm TV mã ' + code + '…');
     this.conn = peer.connect(id, { reliable: false });
-    await withTimeout(new Promise((res, rej) => {
-      this.conn.once('open', res);
-      peer.once('error', e => rej(e?.type === 'peer-unavailable' ? new Error(`Không thấy TV có mã ${code}. Kiểm tra mã đang hiện trên TV.`) : e));
-    }), 10000, `Không thấy TV có mã ${code}.`);
+    let found = false; // máy chủ ghép nối đã chuyển lời mời tới TV (TV có tồn tại)
+    const t0 = performance.now();
+    const tick = setInterval(() => {
+      const pc = this.conn?.peerConnection;
+      if (pc && !found) { found = true; }
+      const sec = Math.round((performance.now() - t0) / 1000);
+      onStatus(found ? `Đã thấy TV mã ${code} — đang nối trực tiếp qua Wi-Fi… (${sec}s)` : `Đang tìm TV mã ${code}… (${sec}s)`);
+    }, 1000);
+    try {
+      await withTimeout(new Promise((res, rej) => {
+        this.conn.once('open', res);
+        peer.once('error', e => rej(e?.type === 'peer-unavailable' ? new Error(`Không thấy TV có mã ${code}. Kiểm tra mã đang hiện trên TV (mã đổi mỗi lần tải lại trang).`) : e));
+        // ICE thất bại hẳn thì báo ngay, không cần đợi hết giờ
+        const watch = setInterval(() => {
+          const pc = this.conn?.peerConnection;
+          if (pc && (pc.iceConnectionState === 'failed' || pc.connectionState === 'failed')) { clearInterval(watch); rej(Object.assign(new Error('ice-failed'), { ice: true })); }
+        }, 500);
+        this.conn.once('open', () => clearInterval(watch));
+      }), 25000, 'timeout');
+    } catch (e) {
+      clearInterval(tick);
+      if (e.message === 'timeout' || e.ice) {
+        const d = await iceDiag(this.conn?.peerConnection);
+        console.warn('[link] ICE', d);
+        throw new Error(this.conn?.peerConnection ? explainIce(d) : `Không thấy TV có mã ${code}. Kiểm tra mã trên TV, và TV/laptop vẫn đang mở trang màn hình.`);
+      }
+      throw e;
+    }
+    clearInterval(tick);
 
     onStatus('Đang gửi hình…');
     stream.getVideoTracks().forEach(t => { try { t.contentHint = 'motion'; } catch { /* */ } });

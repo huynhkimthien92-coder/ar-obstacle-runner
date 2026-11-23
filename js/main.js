@@ -602,7 +602,7 @@ async function connectWifi() {
   } catch (e) {
     console.error(e); audioToLocal();
     chooseOutput('phone'); applyOutput();
-    $('tv-status').textContent = '⚠ ' + (e?.message || e);
+    $('tv-status').textContent = '⚠ ' + (e?.message || e); $('tv-status').style.whiteSpace = 'pre-line';
   } finally { $('btn-tv-connect').disabled = false; }
 }
 link.onChange = st => {
