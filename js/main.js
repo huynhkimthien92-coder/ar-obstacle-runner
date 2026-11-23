@@ -208,7 +208,7 @@ function updateWorld() {
     ppm = Math.hypot(ls.x - rs.x, ls.y - rs.y) / 0.36; g = (ls.y + rs.y) / 2 + 1.42 * ppm;
   }
   if (!(ppm > 0)) return;
-  ppm = Math.min(H * 0.9, Math.max(H * 0.1, ppm)); g = Math.min(H * 1.7, Math.max(H * 0.5, g));
+  ppm = Math.min(H * 0.9, Math.max(H * 0.1, ppm)); g = Math.min(H * 1.15, Math.max(H * 0.5, g)); // mặt đường không chìm quá sâu dưới mép màn hình
   const a = renderer.ppm0 ? 0.05 : 1;
   renderer.setWorld((renderer.groundY ?? g) + (g - (renderer.groundY ?? g)) * a, (renderer.ppm0 ?? ppm) + (ppm - (renderer.ppm0 ?? ppm)) * a);
 }

@@ -155,7 +155,7 @@ export class MotionTracker {
       return;
     }
     d.bodyFrac = nose ? Math.max(la?.y ?? 0, ra?.y ?? 0) - nose.y : 0;
-    d.hint = !s.fullBody || d.bodyFrac > 0.92 ? 'farther' : d.bodyFrac < 0.42 ? 'closer' : 'ok';
+    d.hint = !s.fullBody || d.bodyFrac > c.fullBodyMax ? 'farther' : d.bodyFrac < 0.4 ? 'closer' : 'ok'; // người cao quá ~3/4 khung → nhỏ lại cho cân với đường đua / ô
     const vfov = (this.videoPortrait ? 62 : 48) * Math.PI / 180;
     d.meters = s.fullBody && d.bodyFrac > 0.05 ? 1.5 / (d.bodyFrac * 2 * Math.tan(vfov / 2)) : null;
   }

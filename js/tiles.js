@@ -22,8 +22,9 @@ export class TileGeom {
   constructor(W, H, rows, cols, groundY) {
     Object.assign(this, { W, H, rows, cols });
     if (rows > 1) {
-      this.yNear = Math.min(H * 0.995, groundY + H * 0.14);
-      this.yFar = Math.max(H * 0.3, groundY - H * 0.2);
+      // chân người chơi lúc bắt đầu nằm ở HÀNG GIỮA → bước tới / lùi đều đổi được hàng
+      this.yNear = Math.min(H * 0.995, groundY + H * 0.12);
+      this.yFar = Math.max(H * 0.3, groundY - H * 0.15);
       this.wNear = W * 0.98; this.wFar = W * 0.62;
     } else {
       this.yNear = H * 0.985; this.yFar = H * 0.8; this.wNear = this.wFar = W * 0.98;

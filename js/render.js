@@ -87,16 +87,60 @@ export class Renderer {
     const v = this.video;
     if (v && v.readyState >= 2 && v.videoWidth) {
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-      const s = (this.fit === 'contain' ? Math.min : Math.max)(W / v.videoWidth, H / v.videoHeight), dw = v.videoWidth * s, dh = v.videoHeight * s;
-      ctx.save();
-      if (this.mirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
-      ctx.drawImage(v, (W - dw) / 2, (H - dh) / 2, dw, dh);
-      ctx.restore();
+      this.drawVideo();
     } else {
       const g = ctx.createRadialGradient(W / 2, H * 0.3, 10, W / 2, H * 0.3, W * 0.7);
       g.addColorStop(0, '#1b2366'); g.addColorStop(1, '#0a0e28');
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     }
+  }
+
+  /** Vẽ hình camera đúng như lớp nền (cùng cách phủ khung + lật gương) — dùng cho nền và cho phần "người" vẽ đè. */
+  drawVideo() {
+    const { ctx, W, H } = this, v = this.video;
+    const s = (this.fit === 'contain' ? Math.min : Math.max)(W / v.videoWidth, H / v.videoHeight), dw = v.videoWidth * s, dh = v.videoHeight * s;
+    ctx.save();
+    if (this.mirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
+    ctx.drawImage(v, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    ctx.restore();
+  }
+
+  /**
+   * Vẽ lại NGƯỜI (cắt từ hình camera theo khung xương: đầu, thân, tay, chân dạng ống bo tròn) lên TRÊN ô / đường đua,
+   * để người trông như đứng trên sàn thật thay vì bị lớp đồ hoạ che mất chân.
+   */
+  cutout(pts) {
+    const v = this.video;
+    if (!pts || !v || v.readyState < 2 || !v.videoWidth) return;
+    const ok = i => pts[i] && pts[i].v >= 0.45;
+    if (!ok(11) || !ok(12)) return;
+    const sw = Math.hypot(pts[11].x - pts[12].x, pts[11].y - pts[12].y);
+    const path = new Path2D();
+    const circle = (p, r) => { path.moveTo(p.x + r, p.y); path.arc(p.x, p.y, r, 0, Math.PI * 2); };
+    const seg = (a, b, w) => { // ống bo tròn từ a tới b, bề rộng w
+      if (!ok(a) || !ok(b)) return;
+      const A = pts[a], B = pts[b], dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy) || 1, nx = -dy / L * w / 2, ny = dx / L * w / 2;
+      path.moveTo(A.x + nx, A.y + ny); path.lineTo(B.x + nx, B.y + ny); path.lineTo(B.x - nx, B.y - ny); path.lineTo(A.x - nx, A.y - ny); path.closePath();
+      circle(A, w / 2); circle(B, w / 2);
+    };
+    // thân: tứ giác vai–hông nới rộng
+    if (ok(23) && ok(24)) {
+      const c = { x: (pts[11].x + pts[12].x + pts[23].x + pts[24].x) / 4, y: (pts[11].y + pts[12].y + pts[23].y + pts[24].y) / 4 };
+      const grow = p => ({ x: c.x + (p.x - c.x) * 1.25, y: c.y + (p.y - c.y) * 1.12 });
+      const q = [pts[11], pts[12], pts[24], pts[23]].map(grow);
+      path.moveTo(q[0].x, q[0].y); q.slice(1).forEach(p => path.lineTo(p.x, p.y)); path.closePath();
+    } else seg(11, 12, sw * 0.6);
+    // đầu
+    const sh = { x: (pts[11].x + pts[12].x) / 2, y: (pts[11].y + pts[12].y) / 2 };
+    const head = ok(0) ? { x: pts[0].x, y: pts[0].y - sw * 0.08 } : { x: sh.x, y: sh.y - sw * 0.75 };
+    circle(head, sw * 0.52); seg(11, 12, sw * 0.35);
+    if (ok(0)) { const neck = { x: (sh.x + head.x) / 2, y: (sh.y + head.y) / 2 }; circle(neck, sw * 0.28); }
+    // tay, chân
+    seg(11, 13, sw * 0.36); seg(13, 15, sw * 0.3); seg(12, 14, sw * 0.36); seg(14, 16, sw * 0.3);
+    seg(23, 25, sw * 0.5); seg(25, 27, sw * 0.4); seg(24, 26, sw * 0.5); seg(26, 28, sw * 0.4);
+    seg(27, 31, sw * 0.32); seg(28, 32, sw * 0.32); seg(27, 29, sw * 0.32); seg(28, 30, sw * 0.32); // bàn chân
+    const { ctx } = this;
+    ctx.save(); ctx.clip(path); this.drawVideo(); ctx.restore();
   }
 
   /** Chữ & HUD vẽ thẳng lên canvas — để TV (qua stream) thấy đủ, và đọc được từ 3 m. */
@@ -227,11 +271,22 @@ export class Renderer {
       }
     }
     const inRoster = id => roster.find(p => p.id === id);
+    // ô đang đứng: viền đậm màu người chơi (biết chắc chân mình đang ở ô nào)
+    for (const p of players) {
+      if (!p.present || !p.feet) continue;
+      const ro = inRoster(p.id);
+      if (roster.length && (!ro || !ro.alive)) continue;
+      const t = geom.locate(p.feet.x, p.feet.y), q = geom.quad(t.r, t.c);
+      ctx.beginPath(); q.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath();
+      ctx.strokeStyle = p.color; ctx.lineWidth = 7 * this.u; ctx.stroke();
+    }
+    // người vẽ đè lên ô → đứng TRÊN sàn, không bị ô che chân
+    for (const p of players) if (p.present && p.pts) this.cutout(p.pts);
     for (const p of players) {
       if (!p.present || !p.pts) continue;
       const ro = inRoster(p.id);
       const color = ro ? (ro.alive ? p.color : '#777') : 'rgba(255,255,255,0.6)';
-      this.skeletonColored(p.pts, color, ro && !ro.alive ? 0.45 : 0.95, ro ? `P${ro.n}` : '');
+      this.skeletonColored(p.pts, color, ro && !ro.alive ? 0.35 : (this.video ? 0.55 : 0.95), ro ? `P${ro.n}` : '');
       if (ro && ro.alive) {
         ctx.strokeStyle = color; ctx.lineWidth = 5 * this.u;
         ctx.beginPath(); ctx.ellipse(p.feet.x, p.feet.y, 34 * this.u, 12 * this.u, 0, 0, Math.PI * 2); ctx.stroke();
@@ -263,7 +318,7 @@ export class Renderer {
       ctx.beginPath(); ctx.moveTo(0, info.groundY); ctx.lineTo(W, info.groundY); ctx.stroke();
       ctx.fillStyle = '#7dffb0'; ctx.textAlign = 'right'; ctx.fillText('mặt sàn (chân)', W - 12 * u, info.groundY - 8 * u);
     }
-    if (pts) this.skeleton(pts, null, null, tSec);
+    if (pts) { this.cutout(pts); this.skeleton(pts, null, null, tSec, 0.6); }
     ctx.fillStyle = 'rgba(255,60,60,0.35)';
     if (info.headCut) ctx.fillRect(0, 0, W, H * 0.05);
     if (info.feetCut) ctx.fillRect(0, H * 0.95, W, H * 0.05);
@@ -310,7 +365,8 @@ export class Renderer {
     const behind = [], front = [];
     for (const o of obs) (o.z > 1.2 ? behind : front).push(o);
     for (const o of behind) this.obstacle(o, tSec);
-    if (view.skeleton && view.pts) this.skeleton(view.pts, player, game, tSec);
+    if (view.pts && this.video) this.cutout(view.pts); // người đứng trên đường đua, che vật ở phía sau mình
+    if (view.skeleton && view.pts) this.skeleton(view.pts, player, game, tSec, this.video ? 0.55 : 0.95);
     else if (view.avatar) this.avatar(player, tSec, game);
     for (const o of front) this.obstacle(o, tSec); // vật đã tới sát người vẽ đè lên người → cảm giác chiều sâu
     ctx.restore();
@@ -472,11 +528,11 @@ export class Renderer {
     ctx.closePath(); ctx.fill(); ctx.stroke();
   }
 
-  skeleton(pts, p, game, t) {
+  skeleton(pts, p, game, t, alpha = 0.95) {
     const { ctx } = this;
     const blink = game && t * 1000 < game.invulnUntil / 1 && Math.floor(t * 12) % 2 === 0;
     const color = p?.airborne ? '#00e5ff' : p?.ducking ? '#c77dff' : '#7dffb0';
-    ctx.globalAlpha = blink ? 0.3 : 0.95;
+    ctx.globalAlpha = blink ? 0.3 * alpha : alpha;
     ctx.lineCap = 'round'; ctx.lineWidth = Math.max(4, Math.min(this.W, this.H) * 0.016);
     ctx.strokeStyle = color;
     ctx.beginPath();
