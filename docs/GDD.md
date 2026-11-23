@@ -82,6 +82,7 @@ Thời lượng phiên ngắn là cố ý: vận động toàn thân mệt nhanh
   | Gầm (sóng âm) | T-Rex | **GIƠ 2 TAY** đỡ |
   | Ném đá | Thằn lằn bay | **ĐẬP** 3 tảng đá bay tới bằng tay |
   Cửa sổ chấp nhận: sớm 0,35 s, muộn 0,12 s **sau khi đã bù độ trễ màn hình** (đo ở bài đo độ trễ). Chỗ đứng gốc trôi chậm theo người chơi khi không bị tấn công → không phải đứng đúng giữa khung.
+- **Động tác (v1.1):** khủng long có khớp nối — chân bước luân phiên (T-Rex / Ba sừng dậm rung màn hình, tung bụi), thân nhún, đầu / hàm / tay / đuôi / cánh cử động riêng. Mỗi đòn 3 nhịp: **lấy đà** (ngả đầu ra sau & sang phía ngược lại, run bần bật, cào đất, nhún rình, bay vọt lên, ngửa cổ hít hơi, xoay người…) → **ra đòn** bắt đầu trước lúc chốt 0,22 s để hình *chạm* đúng lúc tính né/đỡ (đầu phóng to lao sang ngang mặt rồi ĐỚP khép hàm, chồm vồ kèm vết móng cào, lao cả thân húc, hất sừng, cụp cánh bổ nhào, gầm sóng âm, quật đuôi quét ngang) → **thu về**. Trúng đòn thì giật đầu, nheo mắt; choáng thì lảo đảo; gục thì khuỵu chân đổ nghiêng.
 - **Phản công:** né / đỡ đúng → khủng long choáng 1,3 s, hiện **điểm yếu vàng ×2** to.
 - **Tiến trình:** Raptor (6 máu) → Ba sừng (9) → Thằn lằn bay (7) → T-Rex trùm (14); hết 4 con sang vòng mới: máu +40%, gồng / nghỉ nhanh ×0,88. 5 mạng, bất tử 1 s sau khi trúng đòn. Mất dấu người > 0,8 s → khủng long đứng chờ.
 - **Điểm:** trúng 10 × sát thương, né / đỡ 5, đập đá 5 — nhân chuỗi ×1 → ×4 (mỗi 5 lần đúng liên tiếp +1); hạ gục +50 × vòng (trùm ×2).
@@ -111,6 +112,7 @@ Thời lượng phiên ngắn là cố ý: vận động toàn thân mệt nhanh
 
 ## Changelog
 - v0.1 (23/11/2026): bản đầu, 5 loại chướng ngại + sao, 3 tier, tutorial 6 bước.
+- v1.1 (23/11/2026): Đấu khủng long — khủng long có động tác thật (bước đi, lấy đà, ra đòn, thu về) thay vì phóng to hình tĩnh.
 - v1.0 (23/11/2026): game thứ tư **Đấu khủng long** (góc nhìn thứ nhất, 4 loài vẽ chính diện, né / ngồi / đỡ / đập đá, phản công ×2).
 - v0.9.1 (23/11/2026): Ô an toàn — 2 người đứng sát nhau: ghép người theo vị trí dự đoán + màu áo, gán tối ưu cả nhóm, bỏ khung xương trùng, bỏ chân "lạc" sang người bên cạnh, lọc trung vị vị trí chân; chốt ô theo ô đứng nhiều nhất 0,35 s cuối, bị che lúc chốt thì dùng ô thấy gần nhất (≤ 1,5 s).
 - v0.9 (23/11/2026): lọc "người giả" cho cả 3 game — khung xương phải giống người (rõ mặt + vai, đầu trên vai, tỉ lệ thân/tay hợp lý, nằm trong mặt nạ người) và phải xuất hiện liên tục ≥ 0,45 s, không rung loạn, mới tính là có người (js/personcheck.js). Ngưỡng phát hiện người mới 0,4 → 0,5.

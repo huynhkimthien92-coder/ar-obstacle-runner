@@ -4,8 +4,9 @@ import { CONFIG } from './config.js';
 import { T } from './levels.js';
 import { SKELETON } from './pose.js';
 import { TileGeom } from './tiles.js';
-import { drawDino, drawDinoBg, drawRock } from './dinodraw.js';
+import { drawDino, drawDinoBg, drawRock, dinoPose } from './dinodraw.js';
 import { dinoBox } from './dino.js';
+const clamp01 = x => Math.max(0, Math.min(1, x));
 
 const R = CONFIG.RENDER;
 
@@ -334,29 +335,16 @@ export class Renderer {
     this.scroll = tSec;
     this.clear();
     const d = dg.dino, key = d.key;
-    const A = { t: tSec, jaw: 0.15 + 0.1 * Math.sin(tSec * 2), look: Math.sin(tSec * 0.7) * 0.3, glow: 0, crouch: 0, flap: 1 };
-    let B = dinoBox(W, H, key, d.z, d.sway);
-    let sx = 1, ox = 0, oy = 0, focus = { x: B.x, y: B.y - B.h * 0.8 }, rot = 0, alpha = 1, shake = 0;
-    const atk = d.attack, dir = atk?.dir || 0;
-    if (d.phase === 'enter') { B.y += Math.abs(Math.sin(tSec * 7)) * -H * 0.008 * B.s; A.jaw = 0.1; }
-    else if (d.phase === 'windup') {
-      const k = Math.min(1, d.t / d.windup);
-      A.glow = k; A.crouch = k; shake = k * 4 * u;
-      if (atk.need === 'move') { A.look = -dir * k; ox = -dir * W * 0.04 * k; }           // ngắm sang phía người chơi phải tránh
-      if (atk.kind === 'bite' || atk.kind === 'roar') A.jaw = 0.2 + 0.6 * k;
-      if (atk.kind === 'rocks' || key === 'ptero') A.flap = 1 + k;
-    } else if (d.phase === 'attack') {
-      const e = Math.min(1, d.t / 0.32), ee = e * (2 - e);                                  // lao tới rất nhanh
-      A.glow = 1;
-      if (atk.kind === 'bite') { A.jaw = 1; sx = 1 + 0.9 * ee; ox = -dir * W * 0.22 * ee; focus = { x: B.x, y: B.y - B.h * 0.85 }; }
-      else if (atk.kind === 'charge') { sx = 1 + 0.9 * ee; ox = -dir * W * 0.28 * ee; oy = H * 0.05 * ee; focus = { x: B.x, y: B.y - B.h * 0.4 }; }
-      else if (atk.need === 'duck' && atk.kind !== 'tail') { sx = 1 + 0.7 * ee; oy = -H * 0.12 * ee; A.jaw = 0.9; focus = { x: B.x, y: B.y - B.h * 0.6 }; }
-      else if (atk.kind === 'roar') { A.jaw = 1; shake = 10 * u; }
-      else if (atk.kind === 'tail') rot = -0.12 * ee;
-      else if (atk.kind === 'rocks') { A.flap = 2.2; A.jaw = 0.8; }
-    } else if (d.phase === 'counter') { A.look = Math.sin(tSec * 18) * 0.6; A.jaw = 0.5; rot = Math.sin(tSec * 9) * 0.03; }
-    else if (d.phase === 'down') { const k = Math.min(1, d.t / 1.2); rot = 0.9 * k * (key === 'ptero' ? -1 : 1); alpha = 1 - Math.max(0, (d.t - 0.9) / 0.9); oy = H * 0.05 * k; A.jaw = 0.7; }
-    if (d.recoil) { sx *= 1 - 0.05 * d.recoil; oy -= H * 0.01 * d.recoil; }
+    // tư thế từng bộ phận + biến đổi toàn thân do biên đạo động tác tính (dinodraw.dinoPose)
+    const B = dinoBox(W, H, key, d.z, d.sway);
+    const pose = dinoPose(d, dg.clock, tSec, W, H), A = pose.A;
+    const sx = pose.sx, ox = pose.ox, oy = pose.oy, rot = pose.rot, alpha = d.phase === 'down' ? 1 - Math.max(0, (d.t - 0.9) / 0.9) : 1;
+    const focus = { x: B.x, y: B.y - B.h * pose.focusV };
+    let shake = pose.shake * u + (d.phase === 'windup' ? A.glow * 3 * u : 0);
+    // bước chân nặng (T-Rex, Ba sừng): rung màn hình + bụi mỗi lần dậm
+    if (pose.stomp && !this._stomped && (key === 'trex' || key === 'trike')) { this.shake = Math.max(this.shake || 0, key === 'trex' ? 6 : 4); this.burst(B.x + (Math.random() - 0.5) * B.w * 0.5, B.y, '#c8a878', 6); }
+    this._stomped = pose.stomp;
+    const atk = d.attack;
     // khủng long vẽ vào canvas đệm → tô sáng trắng khi trúng đòn / đỏ khi gồng mà không lem ra ngoài hình
     const oc = this._dinoCv || (this._dinoCv = document.createElement('canvas'));
     if (oc.width !== this.cv.width || oc.height !== this.cv.height) { oc.width = this.cv.width; oc.height = this.cv.height; }
@@ -379,19 +367,26 @@ export class Renderer {
     }
     ctx.save(); ctx.globalAlpha = alpha; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(oc, 0, 0); ctx.restore();
     // đòn đặc biệt
-    if (d.phase === 'attack' && atk.kind === 'roar') {
-      const k = Math.min(1, d.t / 0.4);
+    const sT = d.hitAt != null && atk ? dg.clock - d.hitAt : 99; // thời gian kể từ lúc đòn chạm (không phụ thuộc pha logic)
+    if (atk?.kind === 'roar' && sT >= 0 && sT < 0.7) {
+      const k = Math.min(1, sT / 0.4);
       for (let i = 0; i < 4; i++) {
         const rr = (k + i * 0.25) % 1;
         ctx.strokeStyle = `rgba(255,240,200,${0.6 * (1 - rr)})`; ctx.lineWidth = (6 + 20 * rr) * u;
         ctx.beginPath(); ctx.arc(B.x, B.y - B.h * 0.85, H * (0.1 + rr * 0.9), 0, Math.PI * 2); ctx.stroke();
       }
     }
-    if (d.phase === 'attack' && atk.kind === 'tail') { // đuôi khổng lồ quét ngang ngang tầm đầu
-      const k = Math.min(1, d.t / 0.35), x = W * (1.3 - 1.6 * k), y = H * 0.3;
+    if (atk?.kind === 'tail' && sT > -0.12 && sT < 0.45) { // đuôi khổng lồ quét ngang ngang tầm đầu (chạm đúng lúc chốt)
+      const k = Math.min(1, (sT + 0.12) / 0.45), x = W * (1.3 - 1.8 * k), y = H * 0.3;
       ctx.save(); ctx.translate(x, y);
       const g = ctx.createLinearGradient(0, -H * 0.1, 0, H * 0.1); g.addColorStop(0, '#6f9a4a'); g.addColorStop(1, '#2f4a1e');
       ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(-W * 0.05, 0); ctx.quadraticCurveTo(W * 0.3, -H * 0.16, W * 0.9, -H * 0.1); ctx.lineTo(W * 0.9, H * 0.12); ctx.quadraticCurveTo(W * 0.3, H * 0.14, -W * 0.05, 0); ctx.fill();
+      ctx.restore();
+    }
+    if ((atk?.kind === 'pounce' || atk?.kind === 'bite' && key === 'raptor') && sT > -0.05 && sT < 0.3) { // vết móng cào ngang màn hình
+      const k = clamp01((sT + 0.05) / 0.25);
+      ctx.save(); ctx.globalAlpha = 1 - k; ctx.strokeStyle = '#fff'; ctx.lineCap = 'round'; ctx.lineWidth = 9 * u;
+      for (let i = 0; i < 3; i++) { const x0 = W * (0.25 + i * 0.08) - (atk.dir || 0) * W * 0.1; ctx.beginPath(); ctx.moveTo(x0, H * 0.25); ctx.quadraticCurveTo(x0 + W * 0.12, H * 0.45, x0 + W * 0.3 * k, H * (0.3 + 0.5 * k)); ctx.stroke(); }
       ctx.restore();
     }
     if (d.phase === 'counter') { // choáng: sao quay quanh đầu
