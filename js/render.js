@@ -8,7 +8,8 @@ const R = CONFIG.RENDER;
 
 export class Renderer {
   constructor(canvas) {
-    this.cv = canvas; this.ctx = canvas.getContext('2d', { alpha: true, desynchronized: true });
+    // KHÔNG dùng desynchronized: trên Chrome Android canvas độ trễ thấp bị tách thành lớp phủ đục → che mất hình camera
+    this.cv = canvas; this.ctx = canvas.getContext('2d', { alpha: true });
     this.particles = []; this.popups = []; this.flash = 0; this.flashColor = '255,40,40'; this.shake = 0;
     this.fixed = null;   // {w,h}: khung cố định 16:9 khi phát sang TV qua Wi-Fi
     this.video = null;   // khi khác null: vẽ luôn hình camera vào canvas (để stream được cả người lẫn game)
@@ -79,8 +80,9 @@ export class Renderer {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, this.cv.width, this.cv.height);
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    if (!this.fixed || !this.opaque) return;
-    // chế độ stream: canvas phải tự có nền (camera hoặc nền tối), vì TV chỉ nhận đúng canvas này
+    if (!this.opaque) return;
+    // Canvas tự vẽ nền (hình camera hoặc nền tối) thay vì để thẻ <video> bên dưới lộ ra: không phụ thuộc trình duyệt
+    // ghép lớp (lỗi trên Android), và khi phát sang TV qua Wi-Fi thì TV nhận đúng canvas này.
     const v = this.video;
     if (v && v.readyState >= 2 && v.videoWidth) {
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);

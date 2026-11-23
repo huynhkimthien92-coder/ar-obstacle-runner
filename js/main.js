@@ -88,8 +88,8 @@ function applyOutput() {
   renderer.tvHud = true; // HUD/gợi ý luôn vẽ trên canvas, chữ to (cả TV lẫn điện thoại)
   // TV: luôn khung 16:9 cố định (khớp TV, camera 16:9 không bị cắt chân trên điện thoại 20:9)
   renderer.setFixed(out === 'phone' ? 0 : CONFIG.TV.width, CONFIG.TV.height);
-  renderer.opaque = out === 'wifi' || app.input !== 'camera'; // wifi: canvas tự chứa cả hình camera để stream
-  renderer.video = out === 'wifi' && app.input === 'camera' ? video : null;
+  renderer.opaque = true;                                          // canvas luôn tự vẽ nền: hình camera, hoặc nền tối khi chơi bằng phím
+  renderer.video = app.input === 'camera' ? video : null;
   renderer.mirror = settings.facing === 'user';
   updateMapper();
 }
@@ -110,7 +110,7 @@ async function startCameraFlow() {
     $('loading-text').textContent = 'Đang xin quyền camera…';
     app.cam = await startCamera(video, settings.facing, tvOut());
     app.input = 'camera';
-    video.classList.toggle('on', settings.output !== 'wifi'); // wifi: camera vẽ vào canvas
+    video.classList.remove('on'); // hình camera được vẽ vào canvas (thẻ video chỉ để giải mã, ẩn đi)
     video.classList.toggle('mirror', settings.facing === 'user');
     applyOutput();
     bench.watchVideo(video);
