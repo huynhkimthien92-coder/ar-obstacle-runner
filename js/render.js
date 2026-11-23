@@ -221,8 +221,19 @@ export class Renderer {
     for (const st of this.stains || []) st.life -= dt * 0.4;
     if (this.stains) this.stains = this.stains.filter(st => st.life > 0);
     // người (nhỏ, đứng ở đáy) vẽ trước để trái rơi ngang qua phía trước
-    if (view.person?.it) this.drawPersonAt(view.person.it, view.person.anchorF, view.person.anchorD, view.person.s, this.mirror);
-    else if (view.skel) this.skeleton(view.skel, null, null, tSec, 0.9);
+    for (const ps of view.persons || []) {
+      ctx.save();
+      if (ps.label?.stunned) ctx.globalAlpha = 0.45 + 0.25 * Math.sin(tSec * 25); // bị choáng: nhấp nháy
+      if (ps.it) this.drawPersonAt(ps.it, ps.anchorF, ps.anchorD, ps.s, this.mirror);
+      else if (ps.skel) this.skeleton(ps.skel, null, null, tSec, 0.9);
+      ctx.restore();
+      if (ps.label) { // nhãn P1 / P2 trên đầu người nhỏ
+        const y = ps.label.y, lx = ps.label.x;
+        ctx.font = `900 ${Math.round(30 * u)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.lineWidth = 6 * u; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.strokeText(ps.label.text + (ps.label.stunned ? ' 💫' : ''), lx, y);
+        ctx.fillStyle = ps.label.color; ctx.fillText(ps.label.text + (ps.label.stunned ? ' 💫' : ''), lx, y);
+      }
+    }
     // dây nối mờ từ cổ tay thật (nhỏ) tới lưỡi chém → dễ hiểu tay mình đang điều khiển lưỡi nào
     for (const h of view.hands || []) if (h.from) {
       ctx.setLineDash([6 * u, 8 * u]); ctx.strokeStyle = h.color; ctx.globalAlpha = 0.35; ctx.lineWidth = 2 * u;
@@ -248,6 +259,7 @@ export class Renderer {
    */
   blade(h, tSec) {
     const { ctx, H } = this, u = this.u;
+    if (h.stunned) h = { ...h, color: '#8a8a99', speed: 0.3 }; // đang choáng: lưỡi xám, mảnh
     const raw = (h.trail || []).slice();
     const last = raw[raw.length - 1];
     if (!last || last.x !== h.x || last.y !== h.y) raw.push({ x: h.x, y: h.y });
@@ -412,6 +424,19 @@ export class Renderer {
     }
     if (ui.fruit) {
       const F = ui.fruit, k = Math.max(0, Math.min(1, F.time / F.duration));
+      if (F.duo) { // 2 người: điểm P1 bên trái, P2 bên phải, đồng hồ ở giữa
+        F.duo.forEach((P, i) => {
+          const x = i ? W - 28 * u : 28 * u, al = i ? 'right' : 'left';
+          text(`P${i + 1}`, x, 30 * u, 26, P.color, al, 800);
+          text(String(P.score), x, 78 * u, 64, P.stunned ? '#8a8a99' : P.color, al);
+          if (P.stunned) text('💫 choáng', x, 124 * u, 22, '#ff5a3c', al, 700);
+        });
+        const lead = F.duo[0].score === F.duo[1].score ? null : F.duo[0].score > F.duo[1].score ? 0 : 1;
+        text(lead == null ? 'Ngang điểm' : `P${lead + 1} dẫn trước`, W / 2, 40 * u, 26, lead == null ? '#d6e4ff' : F.duo[lead].color, 'center', 800);
+        ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(W * 0.3, 66 * u, W * 0.4, 10 * u);
+        ctx.fillStyle = F.time < 10 ? '#ff5a3c' : '#7dffb0'; ctx.fillRect(W * 0.3, 66 * u, W * 0.4 * k, 10 * u);
+        text(`${Math.ceil(F.time)} s · bom −5 điểm 💣`, W / 2, 96 * u, 22, F.time < 10 ? '#ff5a3c' : '#d6e4ff', 'center', 700);
+      } else {
       text(String(F.score), W / 2, 50 * u, 66);
       ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(W * 0.3, 96 * u, W * 0.4, 10 * u);
       ctx.fillStyle = F.time < 10 ? '#ff5a3c' : '#7dffb0'; ctx.fillRect(W * 0.3, 96 * u, W * 0.4 * k, 10 * u);
@@ -419,6 +444,7 @@ export class Renderer {
       text('♥'.repeat(Math.max(0, F.lives)) + '♡'.repeat(Math.max(0, F.maxLives - F.lives)), 28 * u, 46 * u, 44, '#ff4d6d', 'left');
       text('Né bom 💣', 28 * u, 92 * u, 20, '#d6e4ff', 'left', 600);
       if (F.best != null) text(`Kỷ lục: ${F.best}`, W - 24 * u, 92 * u, 22, '#d6e4ff', 'right', 600);
+      }
     }
     if (ui.cue) this.cue(ui.cue, tMs, u, text);
     else if (ui.hint) text(ui.hint, W / 2, H * 0.25, 54);

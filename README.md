@@ -5,7 +5,7 @@ Game vận động kiểu console cho phòng khách: **điện thoại = máy ch
 **3 trò chơi** (chọn ở menu):
 - 🏃 **Vượt chướng ngại** (1 người): bước né tường, nhảy qua hố lửa / rào, ngồi tránh laser, giơ tay hái sao.
 - 🔥 **Ô an toàn** (1–4 người): sàn trước camera thành lưới ô, mỗi vòng ô xanh/đỏ đổi ngẫu nhiên; hết giờ phải đứng trên ô xanh, ô đỏ là hố lửa. Người trụ lại cuối cùng thắng.
-- 🍉 **Chém trái cây** (1 người): vung 2 tay chém trái rơi từ trên xuống, né bom; người thu nhỏ ở đáy, lưỡi chém theo hướng vươn tay nên không cần với cao.
+- 🍉 **Chém trái cây** (1–2 người, 2 người = đối kháng): vung 2 tay chém trái rơi từ trên xuống, né bom; người thu nhỏ ở đáy, lưỡi chém theo hướng vươn tay nên không cần với cao.
 
 **Chơi ngay trên điện thoại (không cần TV):** dựng máy dọc ngang tầm mắt, đứng gần ~1–1,5 m — game tự dùng khung nửa người (chỉ cần thấy đầu tới hông). Gợi ý động tác hiện thành viền màu + mũi tên lớn + âm báo nên không cần nhìn kỹ màn hình.
 

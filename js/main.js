@@ -136,7 +136,7 @@ async function startCameraFlow() {
       app.pose?.close();
       app.pose = await new PoseEngine().init(settings.model, t => { $('loading-text').textContent = t; ui.panel = { title: t, lines: [] }; });
     }
-    await app.pose.setNumPoses(isTiles() ? 4 : 1);
+    await app.pose.setNumPoses(isTiles() ? 4 : isFruit() ? 2 : 1); // Chém trái cây: tối đa 2 người
     await app.pose.setSegmentation(settings.look === 'game' || isFruit());
     bench.info = { delegate: app.pose.delegate, model: app.pose.model, video: `${video.videoWidth}x${video.videoHeight}`, facing: settings.facing, output: settings.output };
     if (app.afterCamera === 'setup') { app.afterCamera = null; enterSetup(); } else enterCalibration();
@@ -202,7 +202,7 @@ function processPose(now) {
   app.raw = sm;
   app.pts = sm ? sm.map(app.mapper) : null;
   motion.update(app.pts, app.raw, renderer.W, renderer.H, now);
-  if (isTiles()) app.tracker.update(r.all, app.mapper, renderer.W, renderer.H, now);
+  if (isTiles() || isFruit()) app.tracker.update(r.all, app.mapper, renderer.W, renderer.H, now);
   updateWorld();
   const pr = motion.state.present;
   if (app.prevPresent && !pr) app.lostEvents.push(now);
@@ -261,7 +261,7 @@ function calibFrame(now) {
   let color = null;
   // Ô an toàn không cần đo nhảy/ngồi → chỉ cần thấy ít nhất 1 người là bắt đầu được (ai giơ 2 tay cũng được)
   const tilesReady = (isTiles() && app.tracker.list.some(p => p.present)) || (isFruit() && s.present);
-  const anyHands = s.handsUp || (isTiles() && app.tracker.list.some(p => p.present && p.handsUp));
+  const anyHands = s.handsUp || ((isTiles() || isFruit()) && app.tracker.list.some(p => p.present && p.handsUp));
   if (s.calibrated || tilesReady) {
     title = '🙌 Giơ 2 tay lên để bắt đầu'; color = '#7dffb0';
     sub = s.distance.hint === 'ok' ? (tvOut() ? 'Nhìn lên màn hình lớn và chơi' : 'Hoặc bấm "Bắt đầu"') : DT[s.distance.hint]?.[0] || '';
@@ -273,6 +273,7 @@ function calibFrame(now) {
   if (tvOut() && motion.videoPortrait) lines.push('📱↔ Xoay NGANG điện thoại để camera nhìn rộng hơn');
   if (app.lostEvents.length >= 3) lines.push('Hay mất dấu: bật thêm đèn, tránh đứng ngược sáng, mặc áo khác màu tường');
   if (isTiles()) lines.push(`Mọi người cùng đứng vào khung trước khi bắt đầu — đang thấy ${app.tracker.list.filter(p => p.present).length}/4 người`);
+  if (isFruit()) { const n = app.tracker.list.filter(p => p.present).length; lines.push(n >= 2 ? '👥 Thấy 2 người → chơi ĐỐI KHÁNG (ai nhiều điểm hơn thắng)' : '👤 1 người — muốn chơi 2 người thì người thứ hai đứng vào khung trước khi bắt đầu'); }
   $('calib-title').textContent = title; $('calib-sub').textContent = sub;
   $('calib-dist').textContent = lines.slice(1).join(' · ');
   $('btn-calib-start').disabled = !(s.calibrated || tilesReady);
@@ -553,7 +554,7 @@ function overFrame(now, dt) {
   if (isFruit()) renderer.fruitScene(dt, now / 1000, app.fg, fruitView(now, false));
   else if (isTiles()) renderer.tilesScene(dt, now / 1000, app.tg, drawGeom(), app.input === 'camera' ? app.tracker.list : [], app.tg.roster, null, tilesPeople());
   else renderer.frame(dt, now / 1000, app.game, player(), viewOpts());
-  const anyHands = motion.state.handsUp || (isTiles() && app.tracker.list.some(p => p.present && p.handsUp));
+  const anyHands = motion.state.handsUp || ((isTiles() || isFruit()) && app.tracker.list.some(p => p.present && p.handsUp));
   if (app.input === 'camera' && anyHands) {
     app.handsSince ||= now;
     if (ui.panel) ui.panel.progress = Math.min(1, (now - app.handsSince) / 1500);
@@ -796,19 +797,35 @@ function tilesOver() {
 
 // ---------------- Game "Chém trái cây" ----------------
 const FRUIT_PERSON = 0.3; // người chỉ cao 30% màn hình, đứng ở đáy → bầu trời cao để chém
-const HAND_COLORS = { L: '#00e5ff', R: '#ff9f1c', M: '#7dffb0' };
+const HAND_COLORS = { L: '#00e5ff', R: '#ff9f1c', M: '#7dffb0', L1: '#00e5ff', R1: '#6fb8ff', L2: '#ff9f1c', R2: '#ff5ea8' };
+const DUO_COLORS = ['#00e5ff', '#ff9f1c']; // P1 xanh, P2 cam
 function newFruit() {
-  app.fg = new FruitGame({ W: renderer.W, H: renderer.H, seed: (Math.random() * 2 ** 31) | 0 });
-  app.hands = {}; app.fps = null; app.rated = false;
+  // Đủ 2 người trong khung lúc bắt đầu → chơi đối kháng. Chọn 2 người gần camera nhất (vai rộng nhất), xếp trái → phải.
+  let duo = null;
+  if (app.input === 'camera') {
+    const ps = app.tracker.list.filter(p => p.present && p.pts)
+      .sort((a, b) => Math.abs(b.pts[11].x - b.pts[12].x) - Math.abs(a.pts[11].x - a.pts[12].x)).slice(0, 2);
+    if (ps.length === 2) { duo = ps.sort((a, b) => a.c.x - b.c.x).map(p => p.id); app.tracker.setKeep(duo); }
+  }
+  app.fruitIds = duo; app.fslots = [{}, {}];
+  app.fg = new FruitGame({ W: renderer.W, H: renderer.H, seed: (Math.random() * 2 ** 31) | 0, players: duo ? 2 : 1 });
+  app.hands = {}; app.fps = null; app.rated = false; app.arm = {};
   document.querySelectorAll('.fb').forEach(b => { b.disabled = false; });
   ui.fruit = fruitUi(); ui.hud = null; ui.tiles = null;
 }
-function fruitUi() { const f = app.fg; return { score: f.score, time: f.time, duration: f.cfg.duration, lives: f.lives, maxLives: f.cfg.lives, best: store.get('bestFruit', 0) }; }
+function fruitUi() {
+  const f = app.fg;
+  return { score: f.score, time: f.time, duration: f.cfg.duration, lives: f.lives, maxLives: f.cfg.lives, best: store.get('bestFruit', 0),
+    duo: f.duo ? f.p.map((P, i) => ({ score: P.score, color: DUO_COLORS[i], stunned: f.stunned(i) })) : null };
+}
 
-/** Vị trí + tỉ lệ người trên màn hình (nhỏ, đứng ở đáy), tính từ landmark ở toạ độ khung nhận diện. */
-function fruitPlace(now) {
-  const raw = app.raw, fr = app.pose?.frame;
-  if (!raw || !fr || !motion.state.present) return null;
+/**
+ * Vị trí + tỉ lệ một người trên màn hình (nhỏ, đứng ở đáy), tính từ landmark chuẩn hoá `raw`.
+ * slot: trạng thái làm mượt tỉ lệ riêng cho từng người; ax: vị trí ngang (0..1) nơi đặt người.
+ */
+function fruitPlace(raw, now, slot, ax) {
+  const fr = app.pose?.frame;
+  if (!raw || !fr) return null;
   const fw = fr.width, fh = fr.height, W = renderer.W, H = renderer.H;
   const P = i => ({ x: raw[i].x * fw, y: raw[i].y * fh, v: raw[i].v });
   const ls = P(11), rs = P(12), shW = Math.hypot(ls.x - rs.x, ls.y - rs.y), sh = { x: (ls.x + rs.x) / 2, y: (ls.y + rs.y) / 2 };
@@ -818,13 +835,33 @@ function fruitPlace(now) {
   const nose = P(0), headY = nose.v > 0.3 ? nose.y - shW * 0.75 : sh.y - shW * 1.2;
   const targetH = H * FRUIT_PERSON;
   const sNew = feet && feet.y - headY > 20 ? targetH / (feet.y - headY) : (targetH * 0.23) / shW;
-  const k = 1 - Math.exp(-(now - (app.fpsT || now)) / 400); app.fpsT = now;
-  app.fps = app.fps == null ? sNew : app.fps + (sNew - app.fps) * k;
-  const s = app.fps, mirror = renderer.mirror;
+  const k = 1 - Math.exp(-(now - (slot.t || now)) / 400); slot.t = now;
+  slot.s = slot.s == null ? sNew : slot.s + (sNew - slot.s) * k;
+  const s = slot.s, mirror = renderer.mirror;
   const anchorF = feet || sh;
-  const anchorD = { x: W * Math.min(0.85, Math.max(0.15, motion.state.laneX)), y: feet ? H * 0.98 : H - targetH * 0.72 };
+  const anchorD = { x: W * ax, y: feet ? H * 0.98 : H - targetH * 0.72 };
   const toD = (x, y) => ({ x: anchorD.x + (mirror ? -1 : 1) * (x - anchorF.x) * s, y: anchorD.y + (y - anchorF.y) * s });
-  return { s, anchorF, anchorD, toD, P, shW, mirror, fw, fh };
+  return { s, anchorF, anchorD, toD, P, shW, mirror, fw, fh, raw, headD: toD(sh.x, headY) };
+}
+/** Danh sách người đang chơi: [{ pid, pl, maskIdx, raw }] — 1 người dùng người chính, 2 người dùng PlayerTracker. */
+function fruitPlaces(now) {
+  if (app.input !== 'camera') return [];
+  const fg = app.fg;
+  if (!fg?.duo || !app.fruitIds) {
+    if (!motion.state.present) return [];
+    const ax = Math.min(0.85, Math.max(0.15, motion.state.laneX));
+    const pl = fruitPlace(app.raw, now, app.fslots?.[0] || (app.fslots = [{}, {}])[0], ax);
+    return pl ? [{ pid: 0, pl, maskIdx: app.mainIdx, raw: app.raw }] : [];
+  }
+  const W = renderer.W;
+  const ps = app.fruitIds.map(id => app.tracker.list.find(p => p.id === id && p.present && p.raw));
+  // vị trí ngang theo chỗ đứng thật, nhưng giữ 2 người cách nhau ≥ 30% màn hình và P1 luôn bên trái
+  let xs = ps.map((p, i) => (p ? p.c.x / W : i ? 0.72 : 0.28));
+  xs = [Math.min(0.62, Math.max(0.1, xs[0])), Math.min(0.9, Math.max(0.38, xs[1]))];
+  if (xs[1] - xs[0] < 0.3) { const m = (xs[0] + xs[1]) / 2; xs = [Math.max(0.1, m - 0.15), Math.min(0.9, m + 0.15)]; }
+  const out = [];
+  ps.forEach((p, i) => { if (!p) return; const pl = fruitPlace(p.raw, now, app.fslots[i], xs[i]); if (pl) out.push({ pid: i, pl, maskIdx: p.maskIdx, raw: p.raw }); });
+  return out;
 }
 
 /**
@@ -832,9 +869,11 @@ function fruitPlace(now) {
  * nên chỉ cần đưa tay ngang đầu là chém tới trên cao → tay không phải ra khỏi khung camera (không mất dấu).
  * Cổ tay khuất / ra ngoài khung: đoán theo hướng cánh tay từ khuỷu.
  */
-function cameraHands(pl, now) {
+function cameraHands(pl, now, pid = 0, duo = false) {
   const out = [], W = renderer.W, H = renderer.H, sgn = pl.mirror ? -1 : 1;
-  for (const [id, [si, ei, wi]] of [['L', [11, 13, 15]], ['R', [12, 14, 16]]]) {
+  const gain = duo ? 0.55 : 0.65; // 2 người: tầm ngang ngắn hơn chút để mỗi người chủ yếu chém phía mình
+  for (const [hid, [si, ei, wi]] of [['L', [11, 13, 15]], ['R', [12, 14, 16]]]) {
+    const id = duo ? hid + (pid + 1) : hid;
     const S = pl.P(si), E = pl.P(ei); let Wr = pl.P(wi);
     if (S.v < 0.4) continue;
     if (Wr.v < 0.35) { if (E.v < 0.5) continue; Wr = { x: E.x + (E.x - S.x) * 0.95, y: E.y + (E.y - S.y) * 0.95, v: 0.5 }; }
@@ -844,10 +883,12 @@ function cameraHands(pl, now) {
     const dx = (Wr.x - S.x) / arm, dy = (Wr.y - S.y) / arm;
     const SD = pl.toD(S.x, S.y);
     // tay cao hơn đầu một chút (dy ≈ -0.6) đã chạm đỉnh; dang ngang hết tay chạm mép màn hình
-    let x = SD.x + sgn * dx * W * 0.65;
+    let x = SD.x + sgn * dx * W * gain;
     let y = dy < 0 ? SD.y + (dy / 0.6) * (SD.y - H * 0.03) : SD.y + dy * (H - SD.y);
     x = Math.max(0, Math.min(W, x)); y = Math.max(0, Math.min(H, y));
-    out.push(trackHand(id, x, y, now, pl.toD(Wr.x, Wr.y)));
+    const h = trackHand(id, x, y, now, pl.toD(Wr.x, Wr.y));
+    h.pid = pid; h.stunned = !!app.fg?.stunned(pid);
+    out.push(h);
   }
   return out;
 }
@@ -869,12 +910,22 @@ function pointerHands(now) { // không camera: chạm / kéo chuột để chém
   return [trackHand('M', p.x, p.y, now)];
 }
 function fruitView(now, live = true) {
-  const pl = app.input === 'camera' ? fruitPlace(now) : null;
-  const hands = live ? (app.input === 'camera' ? (pl ? cameraHands(pl, now) : []) : pointerHands(now)) : Object.values(app.hands);
-  const it = pl ? app.cutouts.items[app.mainIdx] : null;
-  let skel = null;
-  if (pl && !it && app.raw) skel = app.raw.map(q => { const d = pl.toD(q.x * pl.fw, q.y * pl.fh); return { x: d.x, y: d.y, v: q.v }; });
-  return { person: it ? { it, anchorF: pl.anchorF, anchorD: pl.anchorD, s: pl.s } : null, skel, hands };
+  const places = fruitPlaces(now), duo = !!app.fg?.duo;
+  let hands;
+  if (!live) hands = Object.values(app.hands);
+  else if (app.input === 'camera') {
+    hands = places.flatMap(q => cameraHands(q.pl, now, q.pid, duo));
+    const ids = new Set(hands.map(h => h.id));
+    for (const k of Object.keys(app.hands)) if (!ids.has(k)) delete app.hands[k]; // người khuất → bỏ lưỡi chém cũ
+  } else hands = pointerHands(now);
+  const persons = places.map(({ pid, pl, maskIdx, raw }) => {
+    const it = app.cutouts.items[maskIdx];
+    const label = duo ? { text: `P${pid + 1}`, color: DUO_COLORS[pid], stunned: !!app.fg?.stunned(pid), x: pl.headD.x, y: pl.headD.y - 26 * renderer.u } : null;
+    if (it) return { it, anchorF: pl.anchorF, anchorD: pl.anchorD, s: pl.s, label };
+    const skel = raw.map(q => { const d = pl.toD(q.x * pl.fw, q.y * pl.fh); return { x: d.x, y: d.y, v: q.v }; });
+    return { skel, anchorD: pl.anchorD, s: pl.s, label };
+  });
+  return { persons, hands };
 }
 function fruitCountdownFrame(now, dt) {
   const left = Math.ceil((app.countEnd - now) / 1000);
@@ -888,10 +939,10 @@ function fruitFrame(now, dt) {
   fg.update(dt, view.hands);
   for (const ev of fg.drain()) {
     switch (ev.kind) {
-      case 'slice': sfx.coin(); renderer.sliceFx(ev.o, ev.angle); break;
+      case 'slice': sfx.coin(); renderer.sliceFx(ev.o, ev.angle); if (fg.duo) renderer.popup(ev.o.x, ev.o.y - ev.o.r, `+${ev.o.pts}`, DUO_COLORS[ev.pid], 0.7); break;
       case 'gold': sfx.star(); renderer.sliceFx(ev.o, ev.angle); renderer.popup(ev.o.x, ev.o.y, '+5 giây ⭐', '#ffe066', 1.3); break;
-      case 'combo': sfx.star(); renderer.popup(renderer.W / 2, renderer.H * 0.3, `Combo ×${ev.n}! +${ev.n}`, '#7dffb0', 1.6); buzz(40); break;
-      case 'bomb': sfx.fire(); renderer.burst(ev.o.x, ev.o.y, '#ff7b00', 40); renderer.flash = 1; renderer.flashColor = '255,60,0'; renderer.shake = 16; renderer.popup(ev.o.x, ev.o.y, 'BÙM! −1 ♥', '#ff5a3c', 1.4); buzz([80, 40, 200]); break;
+      case 'combo': sfx.star(); renderer.popup(renderer.W / 2, renderer.H * 0.3, `${fg.duo ? `P${ev.pid + 1} ` : ''}Combo ×${ev.n}! +${ev.n}`, fg.duo ? DUO_COLORS[ev.pid] : '#7dffb0', 1.6); buzz(40); break;
+      case 'bomb': sfx.fire(); renderer.burst(ev.o.x, ev.o.y, '#ff7b00', 40); renderer.flash = 1; renderer.flashColor = '255,60,0'; renderer.shake = 16; renderer.popup(ev.o.x, ev.o.y, fg.duo ? `BÙM! P${ev.pid + 1} −${ev.lost} điểm, choáng!` : 'BÙM! −1 ♥', '#ff5a3c', 1.4); buzz([80, 40, 200]); break;
     }
   }
   ui.fruit = fruitUi();
@@ -901,13 +952,21 @@ function fruitFrame(now, dt) {
 function fruitOver() {
   const fg = app.fg;
   setMode('over'); releaseWakeLock(); sfx.over();
-  let best = store.get('bestFruit', 0); const record = fg.score > best && fg.score > 0; best = Math.max(best, fg.score); store.set('bestFruit', best);
-  const title = `${fg.endReason === 'bomb' ? 'Trúng bom! ' : 'Hết giờ! '}${fg.score} điểm`;
-  const detail = `${fg.sliced} trái · combo lớn nhất ×${fg.bestCombo || 1} · rơi mất ${fg.missed}`;
-  $('over-score').textContent = fg.score; $('over-detail').textContent = detail; $('over-best').textContent = record ? '🏆 Kỷ lục mới!' : `Kỷ lục: ${best}`;
+  const top = fg.duo ? Math.max(fg.p[0].score, fg.p[1].score) : fg.score;
+  let best = store.get('bestFruit', 0); const record = top > best && top > 0; best = Math.max(best, top); store.set('bestFruit', best);
+  let title = `${fg.endReason === 'bomb' ? 'Trúng bom! ' : 'Hết giờ! '}${fg.score} điểm`;
+  let detail = `${fg.sliced} trái · combo lớn nhất ×${fg.bestCombo || 1} · rơi mất ${fg.missed}`;
+  let color = '#00e5ff';
+  if (fg.duo) {
+    const w = fg.winner(), [a, b] = fg.p;
+    title = w < 0 ? `Hoà! ${a.score} – ${b.score}` : `🏆 P${w + 1} thắng! ${a.score} – ${b.score}`;
+    color = w < 0 ? '#ffffff' : DUO_COLORS[w];
+    detail = `P1: ${a.sliced} trái, combo ×${a.bestCombo || 1} · P2: ${b.sliced} trái, combo ×${b.bestCombo || 1}`;
+  }
+  $('over-score').textContent = fg.duo ? `${fg.p[0].score} – ${fg.p[1].score}` : fg.score; $('over-detail').textContent = detail; $('over-best').textContent = record ? '🏆 Kỷ lục mới!' : `Kỷ lục: ${best}`;
   $('over-hands').textContent = app.input === 'camera' ? 'hoặc giơ 2 tay 1.5 giây để chơi lại' : '';
-  ui.panel = { title, color: '#00e5ff', lines: [detail, record ? '🏆 Kỷ lục mới!' : `Kỷ lục: ${best}`, app.input === 'camera' ? '🙌 Giơ 2 tay 1.5 giây để chơi lại' : 'Enter / bấm Chơi lại'] };
-  const runs = store.get('runs', []); runs.push({ at: Date.now(), game: 'fruit', score: fg.score, sliced: fg.sliced, input: app.input, output: settings.output }); store.set('runs', runs.slice(-30));
+  ui.panel = { title, color, lines: [detail, record ? '🏆 Kỷ lục mới!' : `Kỷ lục: ${best}`, app.input === 'camera' ? '🙌 Giơ 2 tay 1.5 giây để chơi lại' : 'Enter / bấm Chơi lại'] };
+  const runs = store.get('runs', []); runs.push({ at: Date.now(), game: 'fruit', players: fg.players, score: fg.score, sliced: fg.sliced, input: app.input, output: settings.output }); store.set('runs', runs.slice(-30));
   setTimeout(() => { if (app.mode === 'over') show('scr-over'); }, 900);
   app.handsSince = 0;
 }
@@ -921,7 +980,7 @@ window.addEventListener('pointerup', () => { if (app.ptr) app.ptr.down = false; 
 const GAME_DESC = {
   runner: 'Bước né tường, nhảy qua hố lửa, ngồi tránh laser, giơ tay hái sao. 1 người.',
   tiles: 'Sàn nhà thành lưới ô. Hết giờ phải đứng trên Ô XANH — ô đỏ là hố lửa! Ô đổi ngẫu nhiên mỗi vòng. 1–4 người, người trụ lại cuối cùng thắng.',
-  fruit: 'Vung 2 tay chém trái cây rơi từ trên xuống, né bom. Đưa tay cao hơn đầu một chút là lưỡi chém đã chạm đỉnh màn hình — không cần với cao. 75 giây, 1 người.',
+  fruit: 'Vung 2 tay chém trái cây rơi từ trên xuống, né bom. Đưa tay cao hơn đầu một chút là lưỡi chém đã chạm đỉnh màn hình — không cần với cao. 75 giây, 1–2 người (2 người đứng vào khung = đối kháng).',
 };
 function renderGameSel() {
   $('g-runner').classList.toggle('on', settings.game === 'runner'); $('g-runner').setAttribute('aria-checked', settings.game === 'runner');

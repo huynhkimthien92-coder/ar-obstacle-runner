@@ -72,3 +72,25 @@ test('bot vung tay theo trái gần nhất ghi được nhiều điểm trong 60
   }
   assert.ok(g.score > 40, `điểm ${g.score}`);
 });
+
+test('2 người: điểm tính riêng cho từng người', () => {
+  const g = mk([{ x: 300, y: 300 }, { x: 900, y: 300 }], {});
+  g.players = 2; g.duo = true; g.p.push({ score: 0, sliced: 0, bestCombo: 0, stunUntil: -1 });
+  g.update(0.016, [{ id: 'R1', pid: 0, px: 200, py: 300, x: 400, y: 300, speed: 2 }, { id: 'L2', pid: 1, px: 800, py: 300, x: 1000, y: 300, speed: 2 }]);
+  assert.equal(g.p[0].score, 1); assert.equal(g.p[1].score, 1); assert.equal(g.winner(), -1);
+});
+
+test('2 người: chém bom → −5 điểm, bị choáng, không hết lượt', () => {
+  const g = new FruitGame({ W, H, seed: 1, players: 2, cfg: { spawnEvery: () => 999 } });
+  g.spawnT = 999; g.cfg.gravity = () => 0;
+  g.p[1].score = 7;
+  g.objs = [{ id: 1, kind: 'bomb', type: 'bomb', pts: 0, r: 40, x: 600, y: 300, vx: 0, vy: 0, rot: 0, vr: 0, sliced: false },
+            { id: 2, kind: 'fruit', type: 'orange', pts: 1, r: 40, x: 600, y: 500, vx: 0, vy: 0, rot: 0, vr: 0, sliced: false }];
+  g.update(0.016, [{ id: 'R2', pid: 1, px: 500, py: 300, x: 700, y: 300, speed: 2 }]);
+  assert.equal(g.p[1].score, 2); assert.equal(g.over, false); assert.ok(g.stunned(1));
+  g.update(0.016, [{ id: 'R2', pid: 1, px: 500, py: 500, x: 700, y: 500, speed: 2 }]); // đang choáng → không chém được
+  assert.equal(g.p[1].sliced, 0);
+  for (let i = 0; i < 80; i++) g.update(0.016, []);
+  g.update(0.016, [{ id: 'R2', pid: 1, px: 500, py: 500, x: 700, y: 500, speed: 2 }]);
+  assert.equal(g.p[1].sliced, 1); assert.equal(g.winner(), 1);
+});

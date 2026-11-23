@@ -1,5 +1,6 @@
 // GAME "CHÉM TRÁI CÂY": trái cây rơi từ trên xuống, người chơi vung tay (lưỡi chém) cắt ngang trái để ghi điểm.
 // Tránh bom (mất 1 mạng), chém trái vàng (khế) +5 giây. Chém liên tiếp nhiều trái trong một nhát = combo.
+// 2 người: cùng chém chung một bầu trời, ai nhiều điểm hơn thắng. Bom không trừ mạng mà −5 điểm + "choáng" 1,2 giây.
 // Thuần logic (đơn vị: pixel khung vẽ W×H, thời gian giây) → test được bằng Node.
 import { rng } from './game.js';
 
@@ -23,6 +24,7 @@ export const FRUIT_CFG = {
   bombProb: e => (e < 8 ? 0 : Math.min(0.18, 0.05 + 0.002 * e)),
   goldProb: 0.035,
   maxObjects: 9,
+  duo: { bombPenalty: 5, stunSec: 1.2, extraPerSpawn: 1, maxObjects: 12 }, // luật khi 2 người chơi
 };
 
 /** Khoảng cách từ điểm (cx,cy) tới đoạn thẳng A→B. */
@@ -33,9 +35,11 @@ export function segDist(ax, ay, bx, by, cx, cy) {
 }
 
 export class FruitGame {
-  constructor({ W, H, seed = Date.now(), cfg = {} }) {
+  constructor({ W, H, seed = Date.now(), cfg = {}, players = 1 }) {
     this.cfg = { ...FRUIT_CFG, ...cfg };
     Object.assign(this, { W, H });
+    this.players = players >= 2 ? 2 : 1; this.duo = this.players === 2;
+    this.p = Array.from({ length: this.players }, () => ({ score: 0, sliced: 0, bestCombo: 0, stunUntil: -1 }));
     this.rand = rng(seed);
     this.objs = []; this.nextId = 1; this.events = [];
     this.time = this.cfg.duration; this.elapsed = 0; this.spawnT = 0.6;
@@ -47,8 +51,9 @@ export class FruitGame {
 
   _spawn() {
     const c = this.cfg, e = this.elapsed;
-    const n = c.perSpawn(e);
-    for (let i = 0; i < n && this.objs.length < c.maxObjects; i++) {
+    const n = c.perSpawn(e) + (this.duo ? c.duo.extraPerSpawn : 0);
+    const maxO = this.duo ? c.duo.maxObjects : c.maxObjects;
+    for (let i = 0; i < n && this.objs.length < maxO; i++) {
       const roll = this.rand();
       let kind = 'fruit', type = FRUIT_TYPES[Math.floor(this.rand() * FRUIT_TYPES.length)];
       if (roll < c.bombProb(e)) { kind = 'bomb'; type = { key: 'bomb', r: 0.055, pts: 0 }; }
@@ -64,7 +69,8 @@ export class FruitGame {
   }
 
   /**
-   * @param hands [{ id, x, y, px, py, speed }] — vị trí lưỡi chém hiện tại & trước đó (px), tốc độ theo đơn vị H/giây
+   * @param hands [{ id, pid, x, y, px, py, speed }] — vị trí lưỡi chém hiện tại & trước đó (px), tốc độ theo đơn vị H/giây;
+   *              pid = người chơi 0 / 1 (mặc định 0)
    */
   update(dt, hands = []) {
     if (this.over) return;
@@ -78,30 +84,41 @@ export class FruitGame {
 
     const now = this.elapsed;
     for (const h of hands) {
-      if (!(h.speed >= c.minSpeed) || h.px == null) continue;
+      const pid = Math.min(this.players - 1, h.pid || 0), P = this.p[pid];
+      if (!(h.speed >= c.minSpeed) || h.px == null || P.stunUntil > now) continue;
       for (const o of this.objs) {
         if (o.sliced) continue;
         if (segDist(h.px, h.py, h.x, h.y, o.x, o.y) > o.r + c.hitPad * H) continue;
         o.sliced = true;
         const angle = Math.atan2(h.y - h.py, h.x - h.px);
         if (o.kind === 'bomb') {
-          this.lives--; this.events.push({ kind: 'bomb', o });
+          if (this.duo) {
+            const lost = Math.min(P.score, c.duo.bombPenalty);
+            P.score -= lost; P.stunUntil = now + c.duo.stunSec; this.combo.delete(h.id);
+            this.events.push({ kind: 'bomb', o, pid, lost });
+            break; // choáng: nhát này dừng luôn
+          }
+          this.lives--; this.events.push({ kind: 'bomb', o, pid });
           if (this.lives <= 0) this._end('bomb');
           continue;
         }
         const st = this.combo.get(h.id);
         const cnt = st && now - st.last <= c.comboWindow ? st.n + 1 : 1;
-        this.combo.set(h.id, { n: cnt, last: now });
-        this.sliced++;
-        this.score += o.pts;
-        if (o.kind === 'gold') { this.time += 5; this.events.push({ kind: 'gold', o, angle }); }
-        else this.events.push({ kind: 'slice', o, angle, combo: cnt });
+        this.combo.set(h.id, { n: cnt, last: now, pid });
+        this.sliced++; P.sliced++;
+        this.score += o.pts; P.score += o.pts;
+        if (o.kind === 'gold') { this.time += 5; this.events.push({ kind: 'gold', o, angle, pid }); }
+        else this.events.push({ kind: 'slice', o, angle, combo: cnt, pid });
       }
     }
     // kết thúc combo: thưởng thêm bằng số trái trong nhát (từ 3 trái)
     for (const [id, st] of this.combo) {
       if (now - st.last > c.comboWindow) {
-        if (st.n >= 3) { this.score += st.n; this.bestCombo = Math.max(this.bestCombo, st.n); this.events.push({ kind: 'combo', n: st.n, hand: id }); }
+        if (st.n >= 3) {
+          const P = this.p[st.pid || 0];
+          this.score += st.n; P.score += st.n; P.bestCombo = Math.max(P.bestCombo, st.n);
+          this.bestCombo = Math.max(this.bestCombo, st.n); this.events.push({ kind: 'combo', n: st.n, hand: id, pid: st.pid || 0 });
+        }
         this.combo.delete(id);
       }
     }
@@ -113,6 +130,10 @@ export class FruitGame {
     });
     if (this.time <= 0) { this.time = 0; this._end('time'); }
   }
+
+  /** 2 người: chỉ số người thắng (0/1), -1 = hoà. */
+  winner() { if (!this.duo) return 0; const [a, b] = this.p; return a.score === b.score ? -1 : a.score > b.score ? 0 : 1; }
+  stunned(pid) { return (this.p[pid]?.stunUntil ?? -1) > this.elapsed; }
 
   _end(reason) { if (this.over) return; this.over = true; this.endReason = reason; this.events.push({ kind: 'over', reason }); }
 }
