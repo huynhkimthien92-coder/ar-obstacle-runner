@@ -11,6 +11,7 @@ import { Bench } from './bench.js';
 import { Link } from './link.js';
 import { PlayerTracker } from './players.js';
 import { TileGame, TileGeom } from './tiles.js';
+import { Cutouts } from './cutout.js';
 
 const $ = id => document.getElementById(id);
 const store = {
@@ -18,7 +19,7 @@ const store = {
   set(k, v) { try { localStorage.setItem('aor:' + k, JSON.stringify(v)); } catch { /* chế độ riêng tư / sandbox */ } },
 };
 
-const DEFAULTS = { model: 'lite', facing: 'user', skeleton: true, sound: true, debug: false, sens: 1.0, tutorial: true, output: 'phone', bodyMode: 'auto', cueSound: true, game: 'runner' };
+const DEFAULTS = { model: 'lite', facing: 'user', skeleton: true, sound: true, debug: false, sens: 1.0, tutorial: true, output: 'phone', bodyMode: 'auto', cueSound: true, game: 'runner', look: 'game', playerScale: 0.42, bgDim: 0.45 };
 const saved = store.get('settings', {});
 const settings = Object.assign({}, DEFAULTS, saved);
 settings.lag = Object.assign({ phone: CONFIG.LAG.phone, tv: CONFIG.LAG.tv, wifi: CONFIG.LAG.wifi }, saved.lag || {});
@@ -40,7 +41,8 @@ const app = {
   manualTimers: {}, lastT: 0, countEnd: 0, lastCount: 0, handsSince: 0, lostFor: 0, wasLost: false,
   poseSkip: false, poseTick: 0, wakeLock: null, lowFpsFor: 0, rated: false, tutorialMarked: false,
   presentSince: 0, vdim: '', lag: null, lastCueId: 0, prevPresent: false, lostEvents: [],
-  tracker: new PlayerTracker(4), tg: null, geom: null, tickSec: -1, resultShown: false,
+  tracker: new PlayerTracker(4), tg: null, geom: null, vgeom: null, tickSec: -1, resultShown: false,
+  cutouts: new Cutouts(), mainIdx: 0, ps: null, baseFoot: null,
 };
 // Nội dung chữ vẽ lên canvas cho TV (HUD, gợi ý, đếm ngược, bảng thông báo)
 const ui = { hud: null, hint: '', big: null, panel: null, corner: '', cornerColor: null, cue: null, tiles: null };
@@ -53,7 +55,20 @@ const bodyMode = () => (settings.bodyMode === 'auto' ? (tvOut() ? 'full' : 'near
 
 // ---------------- UI helpers ----------------
 function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id)); }
-function setMode(m) { app.mode = m; ui.cue = null; if (m !== 'setup') ui.level = null; if (m !== 'calib' && m !== 'lagtest' && m !== 'over' && m !== 'setup') ui.panel = null; }
+/**
+ * Kiểu hiển thị theo từng màn: chỉnh góc / hiệu chỉnh / đo trễ luôn thấy PHÒNG THẬT (để còn chỉnh máy);
+ * lúc chơi dùng lựa chọn của người chơi: "Khung cảnh game" (người cắt nền, thu nhỏ) hoặc "Thấy phòng thật" (làm tối nền).
+ */
+function applyLook(m = app.mode) {
+  const real = m === 'setup' || m === 'calib' || m === 'lagtest' || m === 'menu';
+  const game = settings.look === 'game' && !real;
+  const was = renderer.look;
+  renderer.look = game ? 'game' : 'ar';
+  renderer.bgDim = m === 'setup' ? 0 : real ? 0.15 : settings.bgDim;
+  if (game) renderer.setWorld(renderer.H * 0.9, renderer.H * settings.playerScale / 1.7); // thế giới cố định, người thu nhỏ theo "Cỡ người"
+  else if (was === 'game') renderer.setWorld(null, null);
+}
+function setMode(m) { app.mode = m; applyLook(m); ui.cue = null; if (m !== 'setup') ui.level = null; if (m !== 'calib' && m !== 'lagtest' && m !== 'over' && m !== 'setup') ui.panel = null; }
 let hintText = '';
 function setHint(text) {
   ui.hint = text || '';
@@ -119,6 +134,7 @@ async function startCameraFlow() {
       app.pose = await new PoseEngine().init(settings.model, t => { $('loading-text').textContent = t; ui.panel = { title: t, lines: [] }; });
     }
     await app.pose.setNumPoses(isTiles() ? 4 : 1);
+    await app.pose.setSegmentation(settings.look === 'game');
     bench.info = { delegate: app.pose.delegate, model: app.pose.model, video: `${video.videoWidth}x${video.videoHeight}`, facing: settings.facing, output: settings.output };
     if (app.afterCamera === 'setup') { app.afterCamera = null; enterSetup(); } else enterCalibration();
   } catch (e) {
@@ -153,7 +169,7 @@ function updateMapper() {
 }
 
 function enterCalibration() {
-  motion.reset(); smoother.reset(); applySettings(); renderer.setWorld(null, null); ui.tiles = null; app.tg = null;
+  motion.reset(); smoother.reset(); applySettings(); renderer.setWorld(null, null); ui.tiles = null; app.tg = null; app.ps = null; app.baseFoot = null;
   motion.beginCalibration();
   app.presentSince = 0; app.handsSince = 0;
   $('hud').hidden = true; setHint(''); ui.hud = null;
@@ -176,6 +192,8 @@ function processPose(now) {
     for (const lm of r.all) { const d = Math.hypot((lm[11].x + lm[12].x) / 2 - app.primaryC.x, (lm[11].y + lm[12].y) / 2 - app.primaryC.y); if (d < best) { best = d; main = lm; } }
   }
   if (main) { app.primaryC = { x: (main[11].x + main[12].x) / 2, y: (main[11].y + main[12].y) / 2 }; app.primaryAt = now; }
+  app.mainIdx = Math.max(0, r.all.indexOf(main));
+  if (r.masks && renderer.look === 'game') app.cutouts.update(r.frame, r.masks, r.all);
   const sm = smoother.apply(main, now);
   app.raw = sm;
   app.pts = sm ? sm.map(app.mapper) : null;
@@ -194,6 +212,7 @@ function processPose(now) {
  * Chỉ cập nhật khi đứng bình thường (không nhảy/ngồi) và làm mượt để đường đua không rung.
  */
 function updateWorld() {
+  if (renderer.look === 'game') return; // khung cảnh game: tỉ lệ cố định theo "Cỡ người"
   const st = motion.state, p = app.pts;
   if (!p || !st.present || st.coasting || st.airborne || st.ducking || st.rebasing) return;
   const ok = (q, m = 0.5) => q && q.v >= m;
@@ -419,7 +438,29 @@ function countdownFrame(now, dt) {
 function player() { return app.input === 'camera' ? motion.state : app.manual; }
 function viewOpts() {
   const cam = app.input === 'camera';
-  return { pts: app.pts, skeleton: cam && settings.skeleton, avatar: !cam || !settings.skeleton, dim: cam ? 0.35 : 0.75 };
+  const person = personView();
+  const game = renderer.look === 'game';
+  return { pts: app.pts, person, skeleton: cam && settings.skeleton && !person, avatar: !cam || (!settings.skeleton && !person), dim: game ? 0.85 : cam ? 0.4 : 0.75 };
+}
+/** Khung cảnh game: người cắt nền được thu nhỏ để cao đúng "Cỡ người" × chiều cao màn hình, chân đặt trên làn đang đứng. */
+function personView() {
+  if (renderer.look !== 'game' || app.input !== 'camera') return null;
+  const it = app.cutouts.items[app.mainIdx];
+  if (!it) return null;
+  const H = renderer.H, W = renderer.W, targetH = H * settings.playerScale, st = motion.state;
+  const body = it.footPx ? it.footPx.y - it.headPx : null;
+  const sNew = body > 20 ? targetH / body : it.shoulderPx ? (targetH * 0.23) / it.shoulderPx : null;
+  if (!sNew) return null;
+  const steady = !st.airborne && !st.ducking;
+  // làm mượt theo THỜI GIAN (~0.4s), không theo số khung hình → máy chậm vẫn về đúng cỡ nhanh
+  const now = performance.now(), k = 1 - Math.exp(-(now - (app.psT || now)) / 400); app.psT = now;
+  app.ps = app.ps == null ? sNew : steady ? app.ps + (sNew - app.ps) * k : app.ps; // giữ tỉ lệ khi đang nhảy/ngồi
+  let y = H;
+  if (it.footPx) { // nhảy thì chân rời mặt đường đúng theo độ cao nhảy thật (đã thu nhỏ)
+    if (steady) app.baseFoot = app.baseFoot == null ? it.footPx.y : app.baseFoot + (it.footPx.y - app.baseFoot) * k;
+    y = renderer.groundY + (it.footPx.y - app.baseFoot) * app.ps;
+  }
+  return { it, x: W * st.laneX, y, s: app.ps };
 }
 
 function playFrame(now, dt) {
@@ -503,7 +544,7 @@ function gameOver() {
 }
 
 function overFrame(now, dt) {
-  if (isTiles()) renderer.tilesScene(dt, now / 1000, app.tg, app.geom, app.input === 'camera' ? app.tracker.list : [], app.tg.roster, null);
+  if (isTiles()) renderer.tilesScene(dt, now / 1000, app.tg, drawGeom(), app.input === 'camera' ? app.tracker.list : [], app.tg.roster, null, tilesPeople());
   else renderer.frame(dt, now / 1000, app.game, player(), viewOpts());
   const anyHands = motion.state.handsUp || (isTiles() && app.tracker.list.some(p => p.present && p.handsUp));
   if (app.input === 'camera' && anyHands) {
@@ -628,12 +669,35 @@ function newTiles() {
   // mặt sàn: lấy trung vị vị trí chân của những người đang đứng trong khung
   const fy = seen.map(p => p.feet.y).sort((a, b) => a - b)[Math.floor(seen.length / 2)];
   const groundY = app.input === 'manual' ? H * 0.78 : Math.min(H * 0.9, fy ?? renderer.groundY ?? H * 0.85);
-  app.geom = new TileGeom(W, H, rows, cols, groundY);
+  app.geom = new TileGeom(W, H, rows, cols, groundY);  // lưới theo hình camera: dùng để XÉT chân đang ở ô nào
+  app.vgeom = TileGeom.virtual(W, H, rows, cols);      // lưới ảo để VẼ ở kiểu "Khung cảnh game"
   app.tg = new TileGame({ rows, cols, seed: (Math.random() * 2 ** 31) | 0, lagMs: lagMs() });
   app.manual.row = Math.floor(rows / 2); app.manual.col = Math.floor(cols / 2);
   app.tickSec = -1; app.rated = false; app.resultShown = false;
   document.querySelectorAll('.fb').forEach(b => { b.disabled = false; });
   ui.tiles = tilesUi(); ui.hud = null;
+}
+const drawGeom = () => (renderer.look === 'game' && app.vgeom ? app.vgeom : app.geom);
+/** Khung cảnh game: đặt từng người (đã cắt nền) lên lưới ảo đúng vị trí chân thật, xa nhỏ gần to. */
+function tilesPeople() {
+  if (renderer.look !== 'game' || app.input !== 'camera' || !app.geom || !app.vgeom) return null;
+  const H = renderer.H, out = [];
+  for (const p of app.tracker.list) {
+    if (!p.present || !p.feet) continue;
+    const it = app.cutouts.items[p.maskIdx];
+    if (!it) continue;
+    const ro = app.tg?.roster.find(r => r.id === p.id);
+    const f = app.geom.locateF(p.feet.x, p.feet.y), pt = app.vgeom.pointAt(f.u, f.v);
+    const body = it.footPx ? it.footPx.y - it.headPx : it.shoulderPx ? it.shoulderPx / 0.23 : null;
+    if (!body) continue;
+    const targetH = H * settings.playerScale * 0.9 * pt.persp;
+    const now = performance.now(), k = 1 - Math.exp(-(now - (p.dsT || now)) / 300); p.dsT = now;
+    p.ds = p.ds ? p.ds + (targetH / body - p.ds) * k : targetH / body;
+    out.push({ it, x: pt.x, y: pt.y, s: p.ds, persp: pt.persp, alive: !ro || ro.alive,
+      color: ro ? (ro.alive ? p.color : '#777') : 'rgba(255,255,255,0.6)', label: ro ? `P${ro.n}` : '', headY: pt.y - targetH,
+      tile: app.geom.locate(p.feet.x, p.feet.y) });
+  }
+  return out;
 }
 const colorOf = id => (id === 'm' ? '#00e5ff' : app.tracker.list.find(p => p.id === id)?.color || '#888');
 function tilesUi() {
@@ -650,7 +714,7 @@ function tilesPositions() {
 function tilesCountdownFrame(now, dt) {
   const left = Math.ceil((app.countEnd - now) / 1000);
   if (left !== app.lastCount && left > 0) { app.lastCount = left; big(String(left)); sfx.tick(); }
-  renderer.tilesScene(dt, now / 1000, app.tg, app.geom, app.input === 'camera' ? app.tracker.list : [], [], app.input === 'manual' ? { r: app.manual.row, c: app.manual.col } : null);
+  renderer.tilesScene(dt, now / 1000, app.tg, drawGeom(), app.input === 'camera' ? app.tracker.list : [], [], app.input === 'manual' ? { r: app.manual.row, c: app.manual.col } : null, tilesPeople());
   if (now < app.countEnd) return;
   const ids = app.input === 'manual' ? ['m'] : app.tracker.list.filter(p => p.present).map(p => p.id).slice(0, 4);
   if (!ids.length) { ui.panel = { title: '👀 Chưa thấy ai', lines: ['Đứng vào khung hình để bắt đầu'] }; return; }
@@ -674,11 +738,11 @@ function tilesFrame(now, dt) {
   if (before !== 'result' && tg.phase === 'result') ui.panel = tileResultPanel();
   if (tg.phase === 'reveal') ui.panel = null;
   ui.tiles = tilesUi();
-  renderer.tilesScene(dt, now / 1000, tg, app.geom, app.input === 'camera' ? app.tracker.list : [], tg.roster, app.input === 'manual' ? pos.get('m') : null);
+  renderer.tilesScene(dt, now / 1000, tg, drawGeom(), app.input === 'camera' ? app.tracker.list : [], tg.roster, app.input === 'manual' ? pos.get('m') : null, tilesPeople());
   if (tg.over) tilesOver();
 }
 function onTileEvent(ev) {
-  const g = app.geom;
+  const g = drawGeom();
   switch (ev.kind) {
     case 'round': app.tickSec = -1; break;
     case 'go': sfx.go(); break;
@@ -766,17 +830,24 @@ $('btn-settings').onclick = () => {
   $('set-skel').checked = settings.skeleton; $('set-sound').checked = settings.sound;
   $('set-debug').checked = settings.debug; $('set-tut').checked = settings.tutorial;
   $('set-body').value = settings.bodyMode; $('set-cue').checked = settings.cueSound;
+  $('set-look').value = settings.look; $('set-scale').value = settings.playerScale; $('set-dim').value = settings.bgDim;
+  $('set-scale-val').textContent = Math.round(settings.playerScale * 100) + '%'; $('set-dim-val').textContent = Math.round(settings.bgDim * 100) + '%';
   $('set-lag').value = lagMs(); $('set-lag-val').textContent = `${lagMs()} ms (${{ phone: 'điện thoại', tv: 'HDMI / phản chiếu', wifi: 'Wi-Fi' }[settings.output]})`;
   $('dlg-settings').showModal();
 };
 $('set-lag').oninput = () => { $('set-lag-val').textContent = `${$('set-lag').value} ms`; };
+$('set-scale').oninput = () => { $('set-scale-val').textContent = Math.round(+$('set-scale').value * 100) + '%'; };
+$('set-dim').oninput = () => { $('set-dim-val').textContent = Math.round(+$('set-dim').value * 100) + '%'; };
 $('btn-relag').onclick = () => { settings.lagMeasured[settings.output] = false; saveSettings(); $('set-lag-val').textContent += ' · sẽ đo lại ở lượt sau'; };
 $('dlg-settings').addEventListener('close', () => {
   Object.assign(settings, {
     model: $('set-model').value, sens: +$('set-sens').value, skeleton: $('set-skel').checked,
     sound: $('set-sound').checked, debug: $('set-debug').checked, tutorial: $('set-tut').checked,
     bodyMode: $('set-body').value, cueSound: $('set-cue').checked,
+    look: $('set-look').value, playerScale: +$('set-scale').value, bgDim: +$('set-dim').value,
   });
+  app.pose?.setSegmentation(settings.look === 'game'); app.ps = null;
+  applyLook();
   const v = +$('set-lag').value;
   if (v !== lagMs()) { settings.lag[settings.output] = v; settings.lagMeasured[settings.output] = true; }
   applySettings();
@@ -855,7 +926,7 @@ function loop(now) {
     case 'over': overFrame(now, dt); break;
     case 'tiles': tilesFrame(now, dt); break;
     case 'paused':
-      if (isTiles() && app.tg) renderer.tilesScene(0, now / 1000, app.tg, app.geom, app.tracker.list, app.tg.roster, null);
+      if (isTiles() && app.tg) renderer.tilesScene(0, now / 1000, app.tg, drawGeom(), app.tracker.list, app.tg.roster, null, tilesPeople());
       else if (app.game) renderer.frame(0, now / 1000, app.game, player(), viewOpts());
       break;
     default: if (renderer.tvHud) renderer.clear();

@@ -17,11 +17,11 @@ export class PlayerTracker {
    * @param mapper  hàm đổi toạ độ video → màn hình
    */
   update(all, mapper, W, H, t) {
-    const dets = (all || []).map(lm => {
+    const dets = (all || []).map((lm, idx) => {
       const ls = lm[LM.L_SH], rs = lm[LM.R_SH];
       if (!vis(ls, 0.35) || !vis(rs, 0.35)) return null;
       const a = mapper(ls), b = mapper(rs);
-      return { lm, c: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
+      return { lm, idx, c: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
     }).filter(Boolean);
 
     // ghép greedy theo khoảng cách nhỏ nhất; người đang khuất được phép "nhảy" xa hơn khi quay lại
@@ -61,7 +61,7 @@ export class PlayerTracker {
   _assign(p, det, mapper, W, H, t) {
     const raw = p.smoother.apply(det.lm, t);
     const pts = raw.map(mapper);
-    p.raw = raw; p.pts = pts; p.c = det.c; p.lastSeen = t; p.present = true;
+    p.raw = raw; p.pts = pts; p.c = det.c; p.lastSeen = t; p.present = true; p.maskIdx = det.idx;
     // Điểm chân trên sàn: giữa 2 mắt cá; không thấy chân thì ước lượng từ hông/vai
     const la = pts[LM.L_AN], ra = pts[LM.R_AN], lh = pts[LM.L_HIP], rh = pts[LM.R_HIP], ls = pts[LM.L_SH], rs = pts[LM.R_SH];
     if (vis(la) && vis(ra)) { p.feet = { x: (la.x + ra.x) / 2, y: Math.max(la.y, ra.y) }; p.feetSeen = true; }

@@ -29,12 +29,43 @@ export class TileGeom {
     } else {
       this.yNear = H * 0.985; this.yFar = H * 0.8; this.wNear = this.wFar = W * 0.98;
     }
+    this._rows();
+  }
+  /** Lưới ẢO để vẽ ở kiểu "Khung cảnh game": to, đẹp, không phụ thuộc camera; vị trí chân thật được ánh xạ sang đây. */
+  static virtual(W, H, rows, cols) {
+    const g = Object.create(TileGeom.prototype);
+    Object.assign(g, { W, H, rows, cols });
+    if (rows > 1) Object.assign(g, { yFar: H * 0.44, yNear: H * 0.97, wFar: W * 0.52, wNear: W * 0.96 });
+    else Object.assign(g, { yFar: H * 0.7, yNear: H * 0.97, wFar: W * 0.8, wNear: W * 0.94 });
+    g._rows();
+    return g;
+  }
+  _rows() {
     // ranh giới hàng: ô gần cao hơn ô xa (phối cảnh) — tỉ lệ 0.78 mỗi hàng
-    const ws = Array.from({ length: rows }, (_, i) => Math.pow(0.78, rows - 1 - i)); // i=0 xa nhất
+    const ws = Array.from({ length: this.rows }, (_, i) => Math.pow(0.78, this.rows - 1 - i)); // i=0 xa nhất
     const sum = ws.reduce((a, b) => a + b, 0);
     this.rowY = [this.yFar];
     let acc = this.yFar;
     for (const w of ws) { acc += (this.yNear - this.yFar) * w / sum; this.rowY.push(acc); }
+  }
+  /** Toạ độ liên tục (u: 0..cols, v: 0..rows) của điểm chân — để đặt người mượt trên lưới ảo. */
+  locateF(x, y) {
+    let v;
+    if (this.rows === 1) v = 0.7;
+    else {
+      const yy = Math.min(this.yNear - 0.01, Math.max(this.yFar, y));
+      let i = 0; while (i < this.rows - 1 && yy >= this.rowY[i + 1]) i++;
+      v = i + (yy - this.rowY[i]) / (this.rowY[i + 1] - this.rowY[i]);
+    }
+    const yy = this.rowY[Math.min(this.rows - 1, Math.floor(v))];
+    const hw = this.halfW(Math.min(this.yNear, Math.max(this.yFar, y))), x0 = this.W / 2 - hw;
+    const u = Math.min(this.cols - 0.001, Math.max(0, (x - x0) / (2 * hw) * this.cols));
+    void yy;
+    return { u, v };
+  }
+  pointAt(u, v) {
+    const r = Math.min(this.rows - 1, Math.floor(v)), y = this.rowY[r] + (v - r) * (this.rowY[r + 1] - this.rowY[r]);
+    return { x: this.xAt(u, y), y, persp: this.halfW(y) / this.halfW(this.yNear) };
   }
   halfW(y) { const k = (y - this.yFar) / Math.max(1, this.yNear - this.yFar); return (this.wFar + (this.wNear - this.wFar) * k) / 2; }
   xAt(c, y) { const hw = this.halfW(y); return this.W / 2 - hw + (2 * hw) * c / this.cols; }

@@ -15,6 +15,9 @@ export class Renderer {
     this.fixed = null;   // {w,h}: khung cố định 16:9 khi phát sang TV qua Wi-Fi
     this.video = null;   // khi khác null: vẽ luôn hình camera vào canvas (để stream được cả người lẫn game)
     this.mirror = true; this.tvHud = false;
+    this.look = 'ar';    // 'ar' = thấy phòng thật · 'game' = khung cảnh game + người cắt ra thu nhỏ
+    this.bgDim = 0;      // làm tối hình phòng (kiểu 'ar') để đồ hoạ nổi rõ
+    this.scroll = 0;
     this.resize();
   }
 
@@ -82,17 +85,56 @@ export class Renderer {
     ctx.clearRect(0, 0, this.cv.width, this.cv.height);
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     if (!this.opaque) return;
+    if (this.look === 'game') { this.bgGame(); return; }
     // Canvas tự vẽ nền (hình camera hoặc nền tối) thay vì để thẻ <video> bên dưới lộ ra: không phụ thuộc trình duyệt
     // ghép lớp (lỗi trên Android), và khi phát sang TV qua Wi-Fi thì TV nhận đúng canvas này.
     const v = this.video;
     if (v && v.readyState >= 2 && v.videoWidth) {
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
       this.drawVideo();
+      if (this.bgDim > 0) { ctx.fillStyle = `rgba(5,8,30,${this.bgDim})`; ctx.fillRect(0, 0, W, H); }
     } else {
       const g = ctx.createRadialGradient(W / 2, H * 0.3, 10, W / 2, H * 0.3, W * 0.7);
       g.addColorStop(0, '#1b2366'); g.addColorStop(1, '#0a0e28');
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     }
+  }
+
+  /** Khung cảnh game thay cho phòng thật: trời hoàng hôn, mặt trời, 2 lớp núi trôi theo quãng đường, mặt đất. */
+  bgGame() {
+    const { ctx, W, H } = this, hz = this.hz;
+    const sky = ctx.createLinearGradient(0, 0, 0, hz);
+    sky.addColorStop(0, '#0b1240'); sky.addColorStop(0.55, '#3b2a7e'); sky.addColorStop(1, '#ff8a5c');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, hz + 1);
+    const sun = ctx.createRadialGradient(W * 0.72, hz - H * 0.05, 0, W * 0.72, hz - H * 0.05, H * 0.2);
+    sun.addColorStop(0, 'rgba(255,240,180,1)'); sun.addColorStop(0.35, 'rgba(255,170,90,0.85)'); sun.addColorStop(1, 'rgba(255,120,80,0)');
+    ctx.fillStyle = sun; ctx.fillRect(0, 0, W, hz);
+    const ridge = (base, amp, speed, color, seed) => {
+      ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(0, hz);
+      for (let x = 0; x <= W; x += W / 48) {
+        const t = (x / W) * 6 + this.scroll * speed + seed;
+        ctx.lineTo(x, hz - base - amp * (0.55 * Math.sin(t) + 0.3 * Math.sin(t * 2.3 + 1) + 0.15 * Math.sin(t * 5.1 + 2)));
+      }
+      ctx.lineTo(W, hz); ctx.closePath(); ctx.fill();
+    };
+    ridge(H * 0.07, H * 0.05, 0.004, '#5a3a8a', 0);
+    ridge(H * 0.03, H * 0.035, 0.012, '#2a1d55', 3);
+    const ground = ctx.createLinearGradient(0, hz, 0, H);
+    ground.addColorStop(0, '#24184f'); ground.addColorStop(1, '#0c0a22');
+    ctx.fillStyle = ground; ctx.fillRect(0, hz, W, H - hz);
+  }
+
+  /** Vẽ người đã cắt nền, THU NHỎ theo hệ số s, chân đặt tại (x, y) trên đường/ô; có bóng dưới chân. */
+  drawPerson(it, x, y, s, mirror, alpha = 1) {
+    if (!it?.canvas) return;
+    const { ctx } = this, cw = it.canvas.width, ch = it.canvas.height;
+    const ax = (it.footPx ? it.footPx.x : it.cxPx) - it.bx, ay = (it.footPx ? it.footPx.y : it.bottomPx) - it.by;
+    ctx.save();
+    if (it.footPx) { ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.ellipse(x, y, cw * s * 0.22, cw * s * 0.06, 0, 0, Math.PI * 2); ctx.fill(); }
+    ctx.globalAlpha = alpha;
+    ctx.translate(x, y); if (mirror) ctx.scale(-1, 1);
+    ctx.drawImage(it.canvas, -ax * s, -ay * s, cw * s, ch * s);
+    ctx.restore();
   }
 
   /** Vẽ hình camera đúng như lớp nền (cùng cách phủ khung + lật gương) — dùng cho nền và cho phần "người" vẽ đè. */
@@ -248,8 +290,9 @@ export class Renderer {
   }
 
   /** Game "Ô an toàn": lưới ô phối cảnh trên sàn, ô đỏ là hố lửa, ô xanh phát sáng; người chơi tô màu riêng. */
-  tilesScene(dt, tSec, tg, geom, players, roster, manualPos) {
+  tilesScene(dt, tSec, tg, geom, players, roster, manualPos, people = null) {
     const { ctx } = this;
+    this.scroll = tSec * 4;
     this.clear();
     const flick = tg.phase === 'reveal' || tg.phase === 'idle';
     const urgent = tg.phase === 'move' && tg.timeLeft < 1.2;
@@ -271,6 +314,23 @@ export class Renderer {
       }
     }
     const inRoster = id => roster.find(p => p.id === id);
+    if (people) { // khung cảnh game: người cắt nền đứng trên lưới ảo, xa trước gần sau
+      for (const q of people) {
+        const qd = geom.quad(q.tile.r, q.tile.c);
+        ctx.beginPath(); qd.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath();
+        ctx.strokeStyle = q.color; ctx.lineWidth = 7 * this.u; ctx.stroke();
+      }
+      for (const q of [...people].sort((a, b) => a.y - b.y)) {
+        this.drawPerson(q.it, q.x, q.y, q.s, this.mirror, q.alive ? 1 : 0.4);
+        ctx.strokeStyle = q.color; ctx.lineWidth = 5 * this.u;
+        ctx.beginPath(); ctx.ellipse(q.x, q.y, 30 * this.u * q.persp, 10 * this.u * q.persp, 0, 0, Math.PI * 2); ctx.stroke();
+        if (q.label) {
+          ctx.font = `900 ${Math.round(26 * this.u)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.strokeText(q.label, q.x, q.headY - 18 * this.u); ctx.fillStyle = q.color; ctx.fillText(q.label, q.x, q.headY - 18 * this.u);
+        }
+      }
+      players = [];
+    }
     // ô đang đứng: viền đậm màu người chơi (biết chắc chân mình đang ở ô nào)
     for (const p of players) {
       if (!p.present || !p.feet) continue;
@@ -357,6 +417,7 @@ export class Renderer {
   /** Khung frame chính khi đang chơi. */
   frame(dt, tSec, game, player, view) {
     const { ctx } = this;
+    this.scroll = game?.traveled || 0;
     this.clear();
     ctx.save();
     if (this.shake > 0.5) { ctx.translate((Math.random() - 0.5) * this.shake, (Math.random() - 0.5) * this.shake); this.shake *= 0.85; }
@@ -365,9 +426,13 @@ export class Renderer {
     const behind = [], front = [];
     for (const o of obs) (o.z > 1.2 ? behind : front).push(o);
     for (const o of behind) this.obstacle(o, tSec);
-    if (view.pts && this.video) this.cutout(view.pts); // người đứng trên đường đua, che vật ở phía sau mình
-    if (view.skeleton && view.pts) this.skeleton(view.pts, player, game, tSec, this.video ? 0.55 : 0.95);
-    else if (view.avatar) this.avatar(player, tSec, game);
+    const blink = game && tSec * 1000 < game.invulnUntil && Math.floor(tSec * 12) % 2 === 0;
+    if (view.person) this.drawPerson(view.person.it, view.person.x, view.person.y, view.person.s, this.mirror, blink ? 0.35 : 1); // khung cảnh game
+    else {
+      if (view.pts && this.video && this.look === 'ar') this.cutout(view.pts); // người đứng trên đường đua, che vật ở phía sau mình
+      if (view.skeleton && view.pts) this.skeleton(view.pts, player, game, tSec, this.video ? 0.55 : 0.95);
+      else if (view.avatar) this.avatar(player, tSec, game);
+    }
     for (const o of front) this.obstacle(o, tSec); // vật đã tới sát người vẽ đè lên người → cảm giác chiều sâu
     ctx.restore();
     this.effects(dt);

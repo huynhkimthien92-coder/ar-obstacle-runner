@@ -49,6 +49,12 @@ Hình trên TV luôn chậm hơn thực tế một chút. Nếu không bù, bạ
 - Đứng **cách nhau ra**, đừng đứng sát hay che nhau, nếu không game có thể nhầm người.
 - Càng nhiều người thì điện thoại càng phải làm việc nhiều hơn (nhận diện từng người) → máy yếu có thể chậm hơn. Game ô diễn ra chậm nên vẫn chơi được.
 
+## Kiểu hiển thị & cỡ người (Cài đặt)
+- **Khung cảnh game** (mặc định): game tách người ra khỏi hình phòng, **thu nhỏ** lại và đặt đứng trên đường đua / ô, nền là khung cảnh game. Phòng chật vẫn chơi được, không cần lùi xa để người nhỏ lại.
+- **Cỡ người trong game** (25–75%): người cao bao nhiêu % màn hình. Kéo nhỏ thì đường đua và ô trông rộng hơn.
+- **Thấy phòng thật**: đồ hoạ vẽ đè lên camera như cũ; thanh **Làm tối phòng thật** giúp đường đua và chữ nổi rõ hơn.
+- Màn **Chỉnh góc camera** và **hiệu chỉnh** luôn hiện phòng thật để bạn chỉnh máy.
+
 ## Gợi ý động tác (nhìn / nghe từ xa)
 Khoảng 1,3 s trước khi chướng ngại vật tới, viền màn hình đổi màu, hiện mũi tên lớn và có âm báo riêng:
 | Màu viền | Biểu tượng | Âm báo | Làm gì |

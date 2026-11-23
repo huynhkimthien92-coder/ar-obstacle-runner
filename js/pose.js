@@ -33,28 +33,43 @@ export class PoseEngine {
           minPoseDetectionConfidence: CONFIG.POSE.detect, minPosePresenceConfidence: CONFIG.POSE.presence, minTrackingConfidence: CONFIG.POSE.track,
           outputSegmentationMasks: false,
         });
-        this.delegate = delegate; this.model = model; this.numPoses = 1;
+        this.delegate = delegate; this.model = model; this.numPoses = 1; this.seg = false;
         return this;
       } catch (e) { lastErr = e; console.warn('[pose] delegate', delegate, 'lỗi:', e); }
     }
     throw lastErr;
   }
 
-  /** Trả null nếu chưa có frame camera mới. */
+  /**
+   * Trả null nếu chưa có frame camera mới. Ảnh camera được thu về khung rộng 640px trước khi nhận diện:
+   * nhanh hơn, và mặt nạ tách người (segmentation) nhỏ gọn để cắt người ra khỏi nền.
+   */
   detect(video) {
-    if (!this.landmarker || video.readyState < 2 || video.currentTime === this.lastVideoTime) return null;
+    if (!this.landmarker || video.readyState < 2 || !video.videoWidth || video.currentTime === this.lastVideoTime) return null;
     this.lastVideoTime = video.currentTime;
+    const fw = 640, fh = Math.round(640 * video.videoHeight / video.videoWidth);
+    if (!this.frame) { this.frame = document.createElement('canvas'); this.fctx = this.frame.getContext('2d', { willReadFrequently: true }); }
+    if (this.frame.width !== fw || this.frame.height !== fh) { this.frame.width = fw; this.frame.height = fh; }
+    this.fctx.drawImage(video, 0, 0, fw, fh);
     const ts = Math.max(performance.now(), this.lastTs + 1); // timestamp phải tăng dần
     this.lastTs = ts;
     const t0 = performance.now();
-    const res = this.landmarker.detectForVideo(video, ts);
+    const res = this.landmarker.detectForVideo(this.frame, ts);
     const ms = performance.now() - t0;
     const all = (res?.landmarks || []).map(lm => lm.map(p => ({ x: p.x, y: p.y, z: p.z, v: p.visibility ?? 1 })));
+    // mặt nạ phải chép ra TRƯỚC khi close() (bộ nhớ của MediaPipe bị thu hồi sau đó)
+    const masks = this.seg && res?.segmentationMasks ? res.segmentationMasks.map(m => ({ w: m.width, h: m.height, data: m.getAsFloat32Array() })) : null;
     res?.close?.();
     // người "chính" (điều khiển menu / game chạy): người có vai gần giữa khung nhất
     let landmarks = null, best = Infinity;
     for (const lm of all) { const d = Math.abs((lm[11].x + lm[12].x) / 2 - 0.5); if (d < best) { best = d; landmarks = lm; } }
-    return { landmarks, all, ms, ts };
+    return { landmarks, all, masks, frame: this.frame, ms, ts };
+  }
+
+  /** Bật/tắt mặt nạ tách người (chỉ cần ở kiểu hiển thị "Khung cảnh game"). */
+  async setSegmentation(on) {
+    if (!this.landmarker || this.seg === on) return;
+    try { await this.landmarker.setOptions({ outputSegmentationMasks: on }); this.seg = on; } catch (e) { console.warn('[pose] seg', e); this.seg = false; }
   }
 
   /** Game "Ô an toàn" cần thấy nhiều người cùng lúc. */

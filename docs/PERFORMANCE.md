@@ -66,6 +66,7 @@ Những số này **không đại diện cho điện thoại**. Trên điện th
 - Service worker cache wasm + model → lần 2 vào gần như tức thì.
 
 **Ưu tiên cao (làm nếu số đo trượt)**
+- *Kiểu Khung cảnh game tốn thêm:* mặt nạ tách người (đọc ~640×360 số thực/khung) + cắt ảnh người bằng JS. Sandbox đo: chép mặt nạ ~4–16 ms tuỳ cỡ ảnh vào. Nếu máy chậm: chuyển sang "Thấy phòng thật" (tắt tách nền), hoặc hạ khung nhận diện từ 640 xuống 480 px (`pose.js`).
 0. *Chế độ Wi-Fi tốn thêm CPU/GPU điện thoại* (vẽ camera vào canvas + mã hoá video): nếu FPS < 30 thì hạ canvas xuống 960×540 (`CONFIG.TV`) hoặc `streamFps` 24.
 1. *Suy luận p95 > 40 ms trên Android tầm trung:* chuyển suy luận sang **Web Worker + OffscreenCanvas/ImageBitmap** để không chặn vòng vẽ. Đổi lại: trễ +1 frame. Ước tính: FPS vẽ ổn định 60 bất kể pose chậm.
 2. *Trễ cam→pose cao:* hạ camera xuống 480×360; thêm **dự đoán tuyến tính** vị trí hông 1 frame tới để bù trễ.

@@ -184,6 +184,20 @@
       <input id="set-sens" type="range" min="0.6" max="1.6" step="0.1">
       <small>Trái = nhạy hơn · Phải = phải nhảy/ngồi rõ hơn</small>
     </label>
+    <label>Kiểu hiển thị khi chơi
+      <select id="set-look">
+        <option value="game">Khung cảnh game — tách người khỏi nền, thu nhỏ (khuyên dùng)</option>
+        <option value="ar">Thấy phòng thật — đồ hoạ vẽ đè lên camera</option>
+      </select>
+    </label>
+    <label>Cỡ người trong game: <b id="set-scale-val"></b>
+      <input id="set-scale" type="range" min="0.25" max="0.75" step="0.01">
+      <small>Người cao bao nhiêu % màn hình (kiểu Khung cảnh game). Nhỏ hơn = đường đua / ô trông rộng hơn, không cần lùi xa.</small>
+    </label>
+    <label>Làm tối phòng thật: <b id="set-dim-val"></b>
+      <input id="set-dim" type="range" min="0" max="0.8" step="0.05">
+      <small>Kiểu Thấy phòng thật: phòng càng tối thì đường đua, chướng ngại và chữ càng nổi rõ.</small>
+    </label>
     <label>Khung người
       <select id="set-body">
         <option value="auto">Tự động (TV: toàn thân · điện thoại: nửa người)</option>
