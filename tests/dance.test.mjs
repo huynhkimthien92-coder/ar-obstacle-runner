@@ -100,7 +100,7 @@ test('màn tập: giữ đúng động tác 0,6 s thì qua; làm sai lâu quá t
   assert.equal(pr.step, 'R'); assert.equal(pr.res[0], true);
   for (let k = 0; k < 6 * 30; k++) tick(null); // không làm R → sau 5 s bỏ qua
   assert.equal(pr.step, 'UL'); assert.equal(pr.res[1], false);
-  for (const P of ['UL', 'UR', 'UP', 'DN']) for (let k = 0; k < 25; k++) tick(P);
+  for (const P of ['UL', 'UR', 'UP', 'T', 'DN', 'SPIN']) for (let k = 0; k < 25; k++) tick(P);
   assert.equal(pr.step, 'CLAP');
   // vỗ tay trễ đều 0,12 s so với phách
   let mt = 3.0; pr.update(t, null, [], mt);
@@ -109,31 +109,32 @@ test('màn tập: giữ đúng động tác 0,6 s thì qua; làm sai lâu quá t
   pr.update(t, null, [], T[7] + 1);
   assert.ok(pr.done); assert.ok(Math.abs(pr.lag - 0.12) < 1e-9);
   const ev = pr.drain(); assert.equal(ev.filter(e => e.kind === 'clap').length, 8); assert.equal(ev.at(-1).kind, 'done');
-  assert.equal(PRACTICE_STEPS.length, 7);
+  assert.equal(PRACTICE_STEPS.length, 9);
 });
 
-test('chế độ bé: ~14 lượt, mỗi lượt 1–2 động tác chỉ trong UP/T/DN, 3 lượt đầu không ngồi, ếch không 2 lượt liền', async () => {
+test('chế độ bé: ~14 lượt, mũi tên ⬅ ➡ ⬆ ⬇ + xoay, 3 lượt đầu không ngồi/xoay, ngồi/xoay không 2 lượt liền', async () => {
   const { buildChart } = await import('../js/dance.js');
   const song = { bpm: 112, offset: 1, downbeat: 0, duration: 88, energy: null };
   for (let seed = 1; seed < 30; seed++) {
     const ch = buildChart(song, { difficulty: 'kid', seed });
     assert.ok(ch.kid); assert.ok(ch.turns.length <= 14 && ch.turns.length >= 10);
     const play = ch.turns.filter(u => u.kind !== 'break');
-    for (const u of play) { assert.ok(u.n >= 1 && u.n <= 2); assert.ok(u.seq.every(p => ['UP', 'T', 'DN'].includes(p))); }
-    for (const u of ch.turns.slice(0, 3)) assert.ok(!u.seq.includes('DN'));
-    let prev = null; for (const u of play) { if (u.seq[0] === 'DN') assert.notEqual(prev, 'DN'); prev = u.seq.at(-1); }
+    for (const u of play) { assert.ok(u.n >= 1 && u.n <= 2); assert.ok(u.seq.every(p => ['UP', 'L', 'R', 'DN', 'SPIN'].includes(p))); assert.ok(u.seq.filter(p => p === 'SPIN').length <= 1); }
+    for (const u of ch.turns.slice(0, 3)) assert.ok(!u.seq.includes('DN') && !u.seq.includes('SPIN'));
+    assert.ok(ch.turns.some(u => u.seq.includes('L')) && ch.turns.some(u => u.seq.includes('R')));
+    let prev = null; for (const u of play) { for (const x of ['DN', 'SPIN']) if (u.seq[0] === x) assert.notEqual(prev, x); prev = u.seq.at(-1); }
     assert.equal(ch.turns.at(-1).kind, 'finish'); assert.deepEqual(ch.turns.at(-1).seq, ['UP']);
     assert.ok(ch.turns.at(-1).end < 75, 'bài cho bé ~1 phút');
   }
 });
 
-test('chế độ bé: giơ 1 tay = cây, dang 1 tay = máy bay; vỗ sớm không phạt; không vỗ vẫn được khen; vỗ gần nhịp = TUYỆT VỜI', async () => {
+test('chế độ bé: giơ 1 tay = ⬆, tay trái hơi chếch lên vẫn là ⬅; vỗ sớm không phạt; không vỗ vẫn được khen; vỗ gần nhịp = TUYỆT VỜI', async () => {
   const { buildChart, DanceGame, kidMatch } = await import('../js/dance.js');
-  assert.ok(kidMatch('UP', 'UL') && kidMatch('T', 'R') && kidMatch('T', 'T') && !kidMatch('DN', 'UP'));
+  assert.ok(kidMatch('UP', 'UL') && kidMatch('L', 'UL') && kidMatch('R', 'R') && !kidMatch('L', 'R') && !kidMatch('DN', 'UP') && kidMatch('SPIN', 'SPIN'));
   const ch = buildChart({ bpm: 112, offset: 1, downbeat: 0, duration: 88 }, { difficulty: 'kid', seed: 3 });
   const g = new DanceGame({ chart: ch });
   const play = (u, { pose, clap }) => {
-    const alt = { UP: 'UL', T: 'R', DN: 'DN' };
+    const alt = { UP: 'UR', L: 'UL', R: 'UR', DN: 'DN', SPIN: 'SPIN' };
     let t = u.t0 + 0.01, k = 0;
     for (; t < u.t0 + u.beat * 2; t += 1 / 30) g.update(t, null, t > u.t0 + 0.3 && t < u.t0 + 0.34 ? [t] : []); // vỗ sớm → bỏ qua
     for (const p of u.seq) { for (let j = 0; j < 12; j++, t += 1 / 30) g.update(t, pose ? alt[p] : null); for (let j = 0; j < 4; j++, t += 1 / 30) g.update(t, null); k++; }

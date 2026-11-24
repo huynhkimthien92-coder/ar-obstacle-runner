@@ -18,6 +18,8 @@ export const DP_CFG = {
   clapNear: 0.85,      // cực tiểu < clapNear và tốc độ khép đủ nhanh cũng tính (vỗ nhanh giữa 2 khung)
   clapSpeed: 2.2,      // thước/giây
   clapGapMs: 180,
+  // xoay 1 vòng: quay lưng (mất mặt / 2 vai đổi chỗ) rồi quay lại nhìn màn hình trong ≤ 4 s
+  spinMaxMs: 4000, spinHoldMs: 800, faceOn: 0.6, faceOff: 0.35, sideRatio: 0.45,
 };
 
 const ok = (p, c) => p && p.v >= c.vis;
@@ -76,15 +78,54 @@ export class DancePoseDetector {
   reset() {
     this.L = 'none'; this.R = 'none'; this.cand = null; this.candN = 0; this.pose = null;
     this.clapOn = false; this.lastClap = -1e9; this.hist = []; this.dbg = null;
+    this.sw0 = null; this.frontSign = 0; this.spin = { ph: 0, t1: 0, back: false, n: 0, side: 0 }; this.spinUntil = -1e9;
+  }
+  /**
+   * Theo dõi xoay người. Trả về 'turning' khi đang quay (bỏ qua tư thế tay), 'spin' khi vừa xoay xong 1 vòng, null bình thường.
+   * Dấu hiệu quay lưng: mũi mờ (không thấy mặt) hoặc 2 vai đổi chỗ so với lúc đứng thẳng; nghiêng người: vai hẹp lại.
+   */
+  _spin(p, ts) {
+    const c = this.c, S = this.spin, a = p[11], b = p[12], sw = Math.hypot(a.x - b.x, a.y - b.y), nose = p[0]?.v ?? 0;
+    const sign = Math.sign(b.x - a.x) || 1;
+    const front = nose >= c.faceOn && (this.frontSign === 0 || sign === this.frontSign) && (this.sw0 == null || sw >= this.sw0 * 0.7);
+    if (S.ph === 2) { if (front) S.ph = 0; else return 'turning'; } // quay lưng quá lâu: chờ nhìn lại màn hình mới tính lại
+    if (S.ph === 0) {
+      if (front) { // học dáng đứng thẳng
+        this.frontSign = this.frontSign || sign;
+        this.sw0 = this.sw0 == null ? sw : this.sw0 * 0.97 + sw * 0.03;
+        S.n = 0; return null;
+      }
+      const away = nose < c.faceOff || (this.frontSign && sign !== this.frontSign && this.sw0 && sw > this.sw0 * 0.2);
+      const side = this.sw0 != null && sw < this.sw0 * c.sideRatio;
+      if (away || side) { if (++S.n >= 2) { S.ph = 1; S.t1 = ts; S.back = away; S.side = side ? 1 : 0; S.n = 0; } }
+      else S.n = 0;
+      return S.ph ? 'turning' : null;
+    }
+    // đang quay
+    if (nose < c.faceOff || (this.frontSign && sign !== this.frontSign)) S.back = true;
+    if (this.sw0 != null && sw < this.sw0 * 0.35) S.side++;
+    if (ts - S.t1 > c.spinMaxMs) { S.ph = 2; S.n = 0; return 'turning'; }
+    if (front) {
+      if (++S.n >= 2) { S.ph = 0; S.n = 0; if (S.back || S.side >= 3) { this.spinUntil = ts + c.spinHoldMs; return 'spin'; } return null; }
+    } else S.n = 0;
+    return 'turning';
   }
   /**
    * @param p   điểm đã làm mượt (toạ độ màn hình) — dùng cho tư thế
    * @param ducking  bộ nhận ngồi chung (motion.state.ducking)
    * @returns mã động tác ổn định hoặc null
    */
-  pose_(p, ducking) {
+  pose_(p, ducking, ts) {
     const c = this.c, sc = bodyScale(p, c);
-    if (!sc) { this.dbg = { why: 'vai' }; return this._commit(null); }
+    if (ts < this.spinUntil) { this.pose = 'SPIN'; this.cand = 'SPIN'; return 'SPIN'; }
+    if (!sc) {
+      // quay lưng hẳn: MediaPipe có thể mất cả 2 vai → vẫn coi là đang xoay
+      if (this.spin.ph === 1) { this.spin.back = true; if (ts - this.spin.t1 > c.spinMaxMs) this.spin.ph = 2; this.dbg = { why: 'xoay' }; return this._commit(null); }
+      this.dbg = { why: 'vai' }; return this._commit(null);
+    }
+    const sp = this._spin(p, ts);
+    if (sp === 'spin') { this.pose = 'SPIN'; this.cand = 'SPIN'; this.L = this.R = 'none'; return 'SPIN'; }
+    if (sp === 'turning') { this.dbg = { why: 'xoay' }; return this._commit(null); }
     // tay bên trái màn hình
     const [lS, rS] = p[11].x <= p[12].x ? [[11, 13, 15], [12, 14, 16]] : [[12, 14, 16], [11, 13, 15]];
     const aL = armAngle(p, ...lS, -1, sc.s, c), aR = armAngle(p, ...rS, 1, sc.s, c);
@@ -100,7 +141,7 @@ export class DancePoseDetector {
     if (this.candN >= this.c.stableFrames || P === this.pose) this.pose = P;
     return this.pose;
   }
-  update(p, ducking) { return this.pose_(p, ducking); }
+  update(p, ducking, ts = Date.now()) { return this.pose_(p, ducking, ts); }
 
   /**
    * Vỗ tay. raw: điểm CHƯA làm mượt (đỡ trễ), toạ độ màn hình; ts: thời điểm khung (ms).

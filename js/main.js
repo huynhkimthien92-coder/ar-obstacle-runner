@@ -14,7 +14,7 @@ import { TileGame, TileGeom } from './tiles.js';
 import { Cutouts } from './cutout.js';
 import { FruitGame } from './fruits.js';
 import { DinoGame, RESP, STAGES } from './dino.js';
-import { DanceGame, buildChart, POSES as DANCE_POSES, DancePractice, KID_POSES, KID_GRADE } from './dance.js';
+import { DanceGame, buildChart, POSES as DANCE_POSES, DancePractice, KID_POSES, KID_GRADE, KID_PRACTICE_STEPS, kidMatch } from './dance.js';
 import { say, hush } from './voice.js';
 import { DancePoseDetector } from './dancepose.js';
 import { Princess3D } from './princess3d.js';
@@ -650,7 +650,7 @@ window.addEventListener('keydown', e => {
   if (e.key === 'Escape' || e.key === 'p') { app.mode === 'paused' ? resume() : pause(); return; }
   if (app.input !== 'manual') return;
   if (isDance()) { // ← → ↑ ↓ + Q/E (chéo) như Audition, SPACE = vỗ tay (chốt nhịp)
-    const dm = { ArrowLeft: 'L', ArrowRight: 'R', ArrowUp: 'UP', ArrowDown: 'DN', q: 'UL', e: 'UR', Q: 'UL', E: 'UR', 7: 'UL', 9: 'UR' };
+    const dm = { ArrowLeft: 'L', ArrowRight: 'R', ArrowUp: 'UP', ArrowDown: 'DN', q: 'UL', e: 'UR', Q: 'UL', E: 'UR', 7: 'UL', 9: 'UR', w: 'T', W: 'T', 8: 'T', s: 'SPIN', S: 'SPIN', 5: 'SPIN' };
     if (e.key === ' ') { e.preventDefault(); if (!e.repeat) app.claps.push(performance.now()); return; }
     if (dm[e.key]) { e.preventDefault(); app.manual.dpose = dm[e.key]; app.manual.dposeAt = performance.now(); }
     return;
@@ -1151,7 +1151,7 @@ function newDance() {
   const chart = buildChart(app.song, { difficulty: settings.danceDiff || 'normal', seed: (Math.random() * 2 ** 31) | 0 });
   app.dance = new DanceGame({ chart, lagMs: danceLag() });
   const kid = settings.danceDiff === 'kid';
-  app.practice = wantPractice() ? new DancePractice(kid ? { beat: chart.beat, offset: app.song.offset || 0, steps: ['UP', 'T', 'DN', 'CLAP'], cfg: { holdSec: 0.4, giveUpSec: 14, clapN: 4 } } : { beat: chart.beat, offset: app.song.offset || 0 }) : null;
+  app.practice = wantPractice() ? new DancePractice(kid ? { beat: chart.beat, offset: app.song.offset || 0, steps: KID_PRACTICE_STEPS, cfg: { holdSec: 0.4, giveUpSec: 14, clapN: 4 } } : { beat: chart.beat, offset: app.song.offset || 0 }) : null;
   app.kidSaid = -1;
   app.skipPractice = false; app.dpd.reset();
   app.music.load(app.song); app.claps = []; app.lastJudge = null; app.rated = false; app.slotD = {};
@@ -1169,7 +1169,7 @@ function danceUi() {
 function dancePose(now) {
   if (app.input !== 'camera') return app.manual.dpose && now - app.manual.dposeAt < 350 ? app.manual.dpose : null;
   if (!app.pts || !motion.state.present) { app.dpd.reset(); return null; }
-  return app.dpd.update(app.pts, motion.state.ducking);
+  return app.dpd.update(app.pts, motion.state.ducking, now);
 }
 /** Vỗ tay từ điểm CHƯA làm mượt (đỡ trễ); bắt cả cú vỗ nhanh lọt giữa 2 khung hình. */
 function detectClap(ts) {
@@ -1237,13 +1237,18 @@ const PRACTICE_TIP = {
   UL: ['Giơ tay bên TRÁI màn hình lên cao', 'Tay giơ cao hơn đầu (chếch cũng được); tay kia buông xuôi'],
   UR: ['Giơ tay bên PHẢI màn hình lên cao', 'Tay giơ cao hơn đầu (chếch cũng được); tay kia buông xuôi'],
   UP: ['Giơ CẢ 2 tay lên cao', 'Hai tay cao hơn đầu; lùi ra xa nếu tay bị ra khỏi khung hình'],
+  T: ['Dang CẢ 2 tay ra ngang vai', 'Hai tay duỗi thẳng sang 2 bên như chữ T'],
   DN: ['NGỒI xuống (khuỵu gối)', 'Hạ người xuống rõ ràng ~1 gang tay rồi giữ; đứng lên khi có dấu ✓'],
+  SPIN: ['XOAY 1 vòng tại chỗ', 'Xoay đủ 1 vòng (quay lưng hẳn lại camera) rồi nhìn lại màn hình, trong 4 giây'],
   CLAP: ['VỖ TAY theo nhạc mỗi khi hạt chạm chấm vàng', 'Vỗ trước ngực, 2 bàn tay chạm hẳn vào nhau'],
 };
 const KID_TIP = {
-  UP: ['🌳 Giơ hai tay lên thật cao như cái cây!', 'Bố mẹ làm mẫu cùng bé nhé — 1 tay hay 2 tay đều được'],
-  T: ['✈️ Dang hai tay ra như máy bay!', 'Dang 1 tay hay 2 tay đều được, tay ngang vai'],
-  DN: ['🐸 Ngồi xuống như chú ếch!', 'Khuỵu gối hạ người xuống rồi giữ một chút'],
+  UP: ['⬆ Giơ tay lên thật cao!', 'Bố mẹ làm mẫu cùng bé nhé — 1 tay hay 2 tay đều được'],
+  L: ['⬅ Dang tay trái ra!', 'Tay bên trái màn hình — như soi gương, tay trái của bé hiện bên trái'],
+  R: ['➡ Dang tay phải ra!', 'Tay bên phải màn hình — như soi gương'],
+  T: ['↔ Dang hai tay ra!', 'Dang 1 tay hay 2 tay đều được, tay ngang vai'],
+  DN: ['⬇ Ngồi xuống!', 'Khuỵu gối hạ người xuống rồi giữ một chút'],
+  SPIN: ['⟳ Xoay một vòng nào!', 'Xoay chậm tại chỗ cho hết 1 vòng rồi nhìn lại màn hình — bố mẹ cầm tay bé xoay cùng nhé'],
   CLAP: ['👏 Vỗ tay khi nghe tiếng "bốp"!', 'Vỗ tay trước ngực'],
 };
 function practiceFrame(now, dt) {
@@ -1255,7 +1260,7 @@ function practiceFrame(now, dt) {
   const mt = app.music.time();
   const claps = app.claps.map(pms => app.music.timeAtPerf(pms)); if (app.claps.length) app.clapFx = now / 1000;
   app.claps = [];
-  pr.update(now / 1000, kid && app.curPose && pr.step !== 'CLAP' && KID_POSES[pr.step] && ({ UP: ['UL', 'UR'], T: ['L', 'R'] }[pr.step] || []).includes(app.curPose) ? pr.step : app.curPose, claps, mt);
+  pr.update(now / 1000, kid && pr.step !== 'CLAP' && kidMatch(pr.step, app.curPose) ? pr.step : app.curPose, claps, mt);
   for (const ev of pr.drain()) {
     if (ev.kind === 'step') { if (ev.ok) { sfx.star(); renderer.burst(renderer.W / 2, renderer.H * 0.4, '#7dffb0', 24); } else sfx.tick(); }
     else if (ev.kind === 'clap') { sfx.ok(); app.lastPracClap = { d: ev.delta, at: now / 1000 }; }
@@ -1264,13 +1269,13 @@ function practiceFrame(now, dt) {
       if (ev.lag != null && app.input === 'camera' && !kid) settings.danceClapLag = Math.round(Math.max(-150, Math.min(450, ev.lag * 1000)));
       settings.dancePracticeDone = true; saveSettings(); if ($('dance-practice')) $('dance-practice').checked = false;
       const lagTxt = ev.lag == null ? 'chưa đo được độ trễ vỗ tay (vỗ chưa đủ 4 lần) — dùng giá trị cũ' : `độ trễ vỗ tay ${Math.round(ev.lag * 1000)} ms → đã bù khi chấm`;
-      app.pracDone = { at: now, text: kid ? '🎉 Bé tập xong rồi! Giờ nhảy cùng công chúa nhé!' : `Xong! Làm được ${ev.ok}/7 bước · ${lagTxt}` };
+      app.pracDone = { at: now, text: kid ? '🎉 Bé tập xong rồi! Giờ nhảy cùng công chúa nhé!' : `Xong! Làm được ${ev.ok}/${pr.steps.length} bước · ${lagTxt}` };
       if (kid) say('Bé tập xong rồi! Giờ mình nhảy cùng các công chúa nhé!');
       big('🎉 XONG PHẦN TẬP!');
     }
   }
   const tip = (kid ? KID_TIP : PRACTICE_TIP)[pr.step] || PRACTICE_TIP.CLAP;
-  renderer.danceScene(dt, now / 1000, g, { ...danceView(now), practice: { pr, tip, mt, seen: app.curPose, dbg: app.input === 'camera' ? app.dpd.dbg : null, lastClap: app.lastPracClap, done: app.pracDone } });
+  renderer.danceScene(dt, now / 1000, g, { ...danceView(now), practice: { pr, tip, mt, kid, seen: app.curPose, dbg: app.input === 'camera' ? app.dpd.dbg : null, lastClap: app.lastPracClap, done: app.pracDone } });
   if (app.pracDone && now - app.pracDone.at > 3200) { // vào bài nhảy thật
     app.pracDone = null; app.practice = null; app.skipPractice = true;
     if (newDance()) { app.countEnd = performance.now() + 3000; app.lastCount = 0; setMode('countdown'); }

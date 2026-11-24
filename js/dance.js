@@ -15,17 +15,22 @@ export const POSES = {
   UP: { icon: '⬆', name: 'Giơ 2 tay', color: '#7dffb0' },
   DN: { icon: '⬇', name: 'Ngồi xuống', color: '#ffd23f' },
   T:  { icon: '↔', name: 'Dang 2 tay', color: '#ff9de2' },
+  SPIN: { icon: '⟳', name: 'Xoay 1 vòng', color: '#c9a0ff' },
 };
 /**
- * Chế độ BÉ (4–6 tuổi): 3 động tác to, đối xứng (không cần phân biệt trái/phải), gọi bằng hình ảnh quen thuộc + giọng đọc.
- * Bé giơ 1 tay hay 2 tay đều được tính "cây cao"; dang 1 hay 2 tay đều là "máy bay".
+ * Chế độ BÉ (4–6 tuổi): mũi tên giống Audition ⬅ ➡ ⬆ ⬇ + xoay 1 vòng ⟳, có giọng đọc.
+ * Trái/phải theo màn hình (hình đã lật gương: tay trái của bé hiện bên trái). Dễ tính: dang tay trái hơi chếch lên vẫn là ⬅,
+ * giơ 1 hay 2 tay đều là ⬆.
  */
 export const KID_POSES = {
-  UP: { emoji: '🌳', label: 'Cao như cây', say: 'Giơ hai tay lên thật cao như cái cây!' },
-  T:  { emoji: '✈️', label: 'Máy bay', say: 'Dang hai tay ra như máy bay!' },
-  DN: { emoji: '🐸', label: 'Ếch ngồi', say: 'Ngồi xuống như chú ếch!' },
+  L:  { emoji: '⬅', label: 'Tay trái', say: 'Dang tay trái ra!' },
+  R:  { emoji: '➡', label: 'Tay phải', say: 'Dang tay phải ra!' },
+  UP: { emoji: '⬆', label: 'Giơ tay lên', say: 'Giơ tay lên thật cao!' },
+  DN: { emoji: '⬇', label: 'Ngồi xuống', say: 'Ngồi xuống!' },
+  SPIN: { emoji: '⟳', label: 'Xoay 1 vòng', say: 'Xoay một vòng nào!' },
+  T:  { emoji: '↔', label: 'Dang tay', say: 'Dang hai tay ra!' },
 };
-const KID_ACCEPT = { UP: ['UP', 'UL', 'UR'], T: ['T', 'L', 'R'], DN: ['DN'] };
+const KID_ACCEPT = { UP: ['UP', 'UL', 'UR'], L: ['L', 'UL'], R: ['R', 'UR'], T: ['T', 'L', 'R'], DN: ['DN'], SPIN: ['SPIN'] };
 export const KID_GRADE = { PERFECT: 'TUYỆT VỜI!', GREAT: 'GIỎI LẮM!', COOL: 'ĐƯỢC RỒI!', BAD: 'ĐƯỢC RỒI!', MISS: 'CỐ LÊN NHÉ!' };
 export const KID_CFG = { maxTurns: 14, breakEvery: 4, perfect: 0.3, holdSec: 0.2 };
 export const GRADES = ['PERFECT', 'GREAT', 'COOL', 'BAD', 'MISS'];
@@ -86,8 +91,8 @@ export function buildChart(song, { difficulty = 'normal', seed = 1 } = {}) {
   return { turns, beat, bpm: song.bpm, duration: song.duration };
 }
 /**
- * Bài nhảy cho BÉ: ~1 phút, mỗi lượt 1 động tác (từ lượt 7: thỉnh thoảng 2), 3 lượt đầu chỉ "cây" và "máy bay",
- * "ếch ngồi" không lặp 2 lượt liền; cứ 4 lượt nghỉ 1; lượt cuối là "cây cao" + pháo hoa.
+ * Bài nhảy cho BÉ: ~1 phút, mỗi lượt 1 động tác (từ lượt 7: thỉnh thoảng 2). 3 lượt đầu chỉ ⬆ ⬅ ➡, từ lượt 4 thêm ⬇,
+ * từ lượt 6 thêm ⟳; ⬇ và ⟳ không lặp 2 lượt liền, mỗi lượt tối đa 1 lần ⟳; cứ 4 lượt nghỉ 1; lượt cuối là "cây cao" + pháo hoa.
  */
 function buildKidChart(song, seed) {
   const K = KID_CFG, rand = rng(seed), beat = danceBeat(song.bpm), raw = 60 / song.bpm, turnBeats = DANCE_CFG.turnBeats;
@@ -100,11 +105,11 @@ function buildKidChart(song, seed) {
     let seq = [];
     if (last) seq = ['UP'];
     else if (!isBreak) {
-      const pool = i < 3 ? ['UP', 'T'] : ['UP', 'T', 'DN'];
+      const pool = i < 3 ? ['UP', 'L', 'R'] : i < 5 ? ['UP', 'L', 'R', 'DN'] : ['UP', 'L', 'R', 'DN', 'SPIN'];
       const n = i >= 6 && i % 3 === 0 ? 2 : 1;
       while (seq.length < n) {
         const p = pool[Math.floor(rand() * pool.length)];
-        if (p === seq[seq.length - 1] || (seq.length === 0 && p === prev) || (p === 'DN' && prev === 'DN')) continue;
+        if (p === seq[seq.length - 1] || (seq.length === 0 && p === prev) || ((p === 'DN' || p === 'SPIN') && (prev === p || seq.includes(p)))) continue;
         seq.push(p);
       }
       prev = seq[seq.length - 1];
@@ -121,15 +126,18 @@ export function kidMatch(target, pose) { return !!pose && (KID_ACCEPT[target] ||
 
 /** Dãy động tác: không lặp liền nhau, NGỒI tối đa 1 lần / lượt và không ở đầu/cuối, cấp thấp chỉ dùng 3 động tác dễ. */
 function genSeq(rand, n, lvl, prev) {
-  const pool = lvl <= 1 ? ['L', 'R', 'UP'] : lvl <= 2 ? ['L', 'R', 'UP', 'UL', 'UR'] : ['L', 'R', 'UP', 'UL', 'UR', 'DN'];
+  const pool = lvl <= 1 ? ['L', 'R', 'UP'] : lvl <= 2 ? ['L', 'R', 'UP', 'UL', 'UR', 'T'] : ['L', 'R', 'UP', 'UL', 'UR', 'T', 'DN', 'SPIN'];
   for (let tries = 0; tries < 20; tries++) {
     const seq = [];
-    let dn = 0;
+    let dn = 0, sp = 0;
     while (seq.length < n) {
       const p = pool[Math.floor(rand() * pool.length)];
       if (p === seq[seq.length - 1]) continue;
       if (p === 'DN' && (dn || seq.length === 0 || seq.length === n - 1)) continue;
+      if (p === 'SPIN' && (sp || seq[seq.length - 1] === 'DN')) continue; // xoay: tối đa 1 lần / lượt, không ngay sau khi ngồi
+      if (p === 'DN' && seq[seq.length - 1] === 'SPIN') continue;
       if (p === 'DN') dn++;
+      if (p === 'SPIN') sp++;
       seq.push(p);
     }
     if (seq.join() !== prev.join()) return seq;
@@ -223,7 +231,8 @@ export class DanceGame {
 }
 
 // ---------------- Màn TẬP: học từng động tác + đo độ trễ vỗ tay ----------------
-export const PRACTICE_STEPS = ['L', 'R', 'UL', 'UR', 'UP', 'DN', 'CLAP'];
+export const PRACTICE_STEPS = ['L', 'R', 'UL', 'UR', 'UP', 'T', 'DN', 'SPIN', 'CLAP'];
+export const KID_PRACTICE_STEPS = ['UP', 'L', 'R', 'DN', 'SPIN', 'CLAP'];
 export const PRACTICE_CFG = { holdSec: 0.6, hintSec: 6, giveUpSec: 16, clapCountIn: 4, clapN: 8, minClaps: 4 };
 
 /**

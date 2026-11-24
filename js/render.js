@@ -541,7 +541,8 @@ export class Renderer {
       for (const key of ['a1', 'a2', 'e1', 'e2']) st[key] += (tgt[key] - st[key]) * k;
       st.squat += ((tgt.squat || 0) - st.squat) * k;
       const groove = Math.abs(Math.sin(Math.PI * (((songBeat - sp.lag) % 1) + 1)));
-      const A = { ...st, t: tSec + i, bob: 0.025 * groove, sway: Math.sin((songBeat - sp.lag) * Math.PI) * 0.05, flare: 0.15 * groove, twirl: P.twirl, mood: P.mood, blink: Math.sin(tSec * 1.3 + i * 2) > 0.985 };
+      const spinF = P.pose === 'SPIN' ? ((((songBeat - sp.lag) % 1) + 1) % 1) : 0; // làm mẫu xoay: mỗi phách 1 vòng
+      const A = { ...st, t: tSec + i, bob: 0.025 * groove, sway: Math.sin((songBeat - sp.lag) * Math.PI) * 0.05, flare: 0.15 * groove, twirl: P.twirl || spinF, mood: P.mood, blink: Math.sin(tSec * 1.3 + i * 2) > 0.985 };
       if (p3) { // công chúa 3D (mẫu VRM CC0): bóng dưới chân vẽ 2D, thân vẽ 3D
         A3[i] = A; p3.pose(i, A, dt);
         ctx.fillStyle = 'rgba(20,0,40,0.35)'; ctx.beginPath(); ctx.ellipse(sp.x, sp.y, sp.h * 0.3, sp.h * 0.06, 0, 0, Math.PI * 2); ctx.fill();
@@ -585,7 +586,7 @@ export class Renderer {
       const gB = ctx.createRadialGradient(hx, by, 0, hx, by, 18 * u); gB.addColorStop(0, '#fff'); gB.addColorStop(1, ready ? '#ffd84a' : '#ff7eb6');
       ctx.fillStyle = gB; ctx.beginPath(); ctx.arc(hx, by, 11 * u, 0, Math.PI * 2); ctx.fill();
       { // lời nhắc: đặt phía trên bảng, giữa màn hình (không bị cắt)
-        const msg = KID ? (ready ? '👏 Vỗ tay khi nghe tiếng "bốp"!' : `Làm theo các công chúa: ${u0.seq.map(p => KID_POSES[p].emoji + ' ' + KID_POSES[p].label).join(' → ')}`) : ready ? '👏 VỖ TAY khi hạt chạy tới vạch vàng!' : `Làm lần lượt ${n} động tác theo thứ tự`;
+        const msg = KID ? (ready ? '👏 Vỗ tay khi nghe tiếng "bốp"!' : `Làm theo các công chúa: ${u0.seq.map(p => KID_POSES[p].emoji + ' ' + KID_POSES[p].label).join('  rồi  ')}`) : ready ? '👏 VỖ TAY khi hạt chạy tới vạch vàng!' : `Làm lần lượt ${n} động tác theo thứ tự`;
         ctx.font = `800 ${Math.round(22 * u)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         const mw = ctx.measureText(msg).width + 28 * u;
         ctx.fillStyle = ready ? 'rgba(80,50,0,0.75)' : 'rgba(12,6,28,0.7)'; ctx.fillRect(W / 2 - mw / 2, py - 40 * u, mw, 34 * u);
@@ -616,23 +617,15 @@ export class Renderer {
     this.effects(dt);
   }
 
-  /** Ô động tác cho bé: hình to (🌳 ✈️ 🐸) + chữ cho bố mẹ đọc. */
+  /** Ô động tác cho bé: mũi tên to (⬆ ↔ ⬇), nhấp nháy ô đang cần làm. */
   _kidIcon(x, y, r, P, state, tSec, small = false) {
-    const ctx = this.ctx, u = this.u, K = KID_POSES[P] || { emoji: '?', label: '' }, rr = small ? r : r * 1.25;
-    const pulse = state === 'now' ? 1 + 0.08 * Math.sin(tSec * 8) : 1;
-    ctx.save(); ctx.translate(x, y); ctx.scale(pulse, pulse);
-    ctx.fillStyle = state === 'done' ? '#7dffb0' : state === 'now' ? '#fff3b0' : 'rgba(255,255,255,0.28)';
-    ctx.beginPath(); ctx.arc(0, 0, rr, 0, Math.PI * 2); ctx.fill();
-    if (state === 'now') { ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 4 * u; ctx.stroke(); }
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `${Math.round(rr * 1.15)}px system-ui, sans-serif`; ctx.fillStyle = '#000';
-    ctx.fillText(K.emoji, 0, rr * 0.06);
-    if (state === 'done') { ctx.font = `900 ${Math.round(rr * 0.6)}px system-ui, sans-serif`; ctx.fillStyle = '#0a7a3a'; ctx.fillText('✓', rr * 0.75, -rr * 0.7); }
-    ctx.restore();
+    const rr = small ? r : r * 1.3, pulse = state === 'now' ? 1 + 0.08 * Math.sin(tSec * 8) : 1;
+    drawPoseIcon(this.ctx, x, y, rr * pulse, POSES[P], state, tSec);
   }
 
   /** Bảng dưới của màn TẬP: 7 bước, động tác đang tập + vòng giữ, gợi ý, game đang thấy gì; bước vỗ tay có thanh phách. */
   _practicePanel(PR, py, pH, tSec) {
-    const { ctx, W, H } = this, u = this.u, pr = PR.pr, steps = pr.steps, NS = steps.length, KIDP = NS < 7;
+    const { ctx, W, H } = this, u = this.u, pr = PR.pr, steps = pr.steps, NS = steps.length, KIDP = !!PR.kid;
     const font = (w, px) => `${w} ${Math.round(px * u)}px system-ui, sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     // tiêu đề + hướng dẫn chính (trên bảng)

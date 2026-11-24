@@ -7,7 +7,7 @@ Game vận động kiểu console cho phòng khách: **điện thoại = máy ch
 - 🔥 **Ô an toàn** (1–4 người): sàn trước camera thành lưới ô, mỗi vòng ô xanh/đỏ đổi ngẫu nhiên; hết giờ phải đứng trên ô xanh, ô đỏ là hố lửa. Người trụ lại cuối cùng thắng.
 - 🍉 **Chém trái cây** (1–2 người, 2 người = đối kháng): vung 2 tay chém trái rơi từ trên xuống, né bom; người thu nhỏ ở đáy, lưỡi chém theo hướng vươn tay nên không cần với cao.
 - 🦖 **Đấu khủng long** (1 người): 16 loài qua 4 màn lao tới nhìn thẳng vào bạn — đánh điểm yếu; màu báo việc phải làm (đỏ né · vàng nhảy · tím ngồi · xanh giơ tay · trắng đập); combo, giả đòn, bầy đàn, khoá sừng, trùm cuối màn.
-- 💃 **Vũ hội công chúa** (1 người): nhảy kiểu Audition cùng 3 công chúa 3D — làm đúng chuỗi động tác tay/ngồi rồi **vỗ tay đúng phách**; PERFECT / FEVER / FINISH MOVE. **Nhập nhạc của bạn** (mp3, m4a…), game tự dò nhịp BPM. Có mức **👶 Bé 4–6 tuổi**: 3 động tác dễ (🌳 ✈️ 🐸), giọng đọc hướng dẫn, chỉ khen không chê.
+- 💃 **Vũ hội công chúa** (1 người): nhảy kiểu Audition cùng 3 công chúa 3D — làm đúng chuỗi động tác tay/ngồi rồi **vỗ tay đúng phách**; PERFECT / FEVER / FINISH MOVE. **Nhập nhạc của bạn** (mp3, m4a…), game tự dò nhịp BPM. Có mức **👶 Bé 4–6 tuổi**: mũi tên như Audition ⬅ ➡ ⬆ ⬇ + xoay 1 vòng, mỗi lượt 1 động tác, giọng đọc hướng dẫn, chỉ khen không chê.
 
 **Chơi ngay trên điện thoại (không cần TV):** dựng máy dọc ngang tầm mắt, đứng gần ~1–1,5 m — game tự dùng khung nửa người (chỉ cần thấy đầu tới hông). Gợi ý động tác hiện thành viền màu + mũi tên lớn + âm báo nên không cần nhìn kỹ màn hình.
 

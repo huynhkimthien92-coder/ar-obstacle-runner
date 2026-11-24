@@ -101,3 +101,36 @@ test('dang cả 2 tay = T (máy bay)', () => {
   const d = new DancePoseDetector();
   assert.equal(run(d, body({ l: 90, r: 95 })), 'T');
 });
+
+test('xoay 1 vòng: nghiêng → quay lưng (mất mặt, vai đổi chỗ) → nhìn lại màn hình = SPIN (giữ ~0,8 s)', () => {
+  const d = new DancePoseDetector(); let ts = 0;
+  const step = (P) => { ts += 33; return d.update(P, false, ts); };
+  for (let i = 0; i < 10; i++) step(body({ l: 5, r: 5 }));
+  const side = () => { const P = body({ l: 5, r: 5 }); P[11].x = 630; P[12].x = 650; P[0].v = 0.5; return P; };
+  const back = () => { const P = body({ l: 5, r: 5 }); [P[11], P[12]] = [P[12], P[11]]; P[0].v = 0.1; return P; };
+  const seen = [];
+  for (const f of [side, side, side, back, back, back, back, side, side, side]) seen.push(step(f()));
+  assert.ok(seen.every(x => x !== 'L' && x !== 'R' && x !== 'SPIN'), seen.join());
+  let r1 = step(body({ l: 5, r: 5 })), r2 = step(body({ l: 5, r: 5 }));
+  assert.equal(r2, 'SPIN', [r1, r2].join());
+  for (let i = 0; i < 15; i++) step(body({ l: 5, r: 5 }));
+  assert.equal(step(body({ l: 5, r: 5 })), 'SPIN'); // vẫn giữ trong 0,8 s
+  for (let i = 0; i < 15; i++) step(body({ l: 5, r: 5 }));
+  assert.equal(step(body({ l: 5, r: 5 })), null);
+});
+
+test('chỉ quay đầu nhìn sang bên rồi quay lại (vai không hẹp, không quay lưng) thì không tính xoay', () => {
+  const d = new DancePoseDetector(); let ts = 0; const out = [];
+  for (let i = 0; i < 10; i++) out.push(d.update(body({ l: 5, r: 5 }), false, ts += 33));
+  for (let i = 0; i < 6; i++) { const P = body({ l: 5, r: 5 }); P[0].v = 0.5; out.push(d.update(P, false, ts += 33)); }
+  for (let i = 0; i < 6; i++) out.push(d.update(body({ l: 5, r: 5 }), false, ts += 33));
+  assert.ok(!out.includes('SPIN'));
+});
+
+test('quay lưng quá lâu (> 4 s) rồi quay lại thì không tính', () => {
+  const d = new DancePoseDetector(); let ts = 0;
+  for (let i = 0; i < 10; i++) d.update(body({ l: 5, r: 5 }), false, ts += 33);
+  for (let i = 0; i < 150; i++) { const P = body({ l: 5, r: 5 }); [P[11], P[12]] = [P[12], P[11]]; P[0].v = 0.1; d.update(P, false, ts += 33); }
+  const out = []; for (let i = 0; i < 5; i++) out.push(d.update(body({ l: 5, r: 5 }), false, ts += 33));
+  assert.ok(!out.includes('SPIN'), out.join());
+});
