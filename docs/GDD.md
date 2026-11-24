@@ -121,6 +121,7 @@ Thời lượng phiên ngắn là cố ý: vận động toàn thân mệt nhanh
 - FPS < 24 kéo dài hoặc trễ camera→pose p95 > 150 ms = **hỏng** cảm giác (xem PERFORMANCE.md).
 
 ## Changelog
+- v2.6.1 (24/11/2026): Đấu khủng long — bỏ khung vuông "BẠN" ở góc; người chơi (đã tách nền) đứng ngay trước con khủng long giữa sân, chân chạm đất, né thì dạt sang bên, trúng đòn thì ửng đỏ; vòng điểm yếu / vật bay / hiệu ứng đòn vẽ đè lên trên người để vẫn thấy chỗ phải đánh.
 - v2.6 (24/11/2026): chế độ Bé dùng mũi tên kiểu Audition ⬅ ➡ ⬆ ⬇ (bỏ hình cây / máy bay / ếch) + động tác mới **⟳ xoay 1 vòng** (cả chế độ thường, từ cấp 3) và **↔ dang 2 tay** (chế độ thường, từ cấp 2). Nhận xoay: quay lưng (mất mặt / 2 vai đổi chỗ, hoặc vai hẹp ≥ 3 khung) rồi nhìn lại màn hình trong ≤ 4 s; trong lúc xoay bỏ qua tư thế tay. Màn Tập người lớn 9 bước.
 - v2.5 (24/11/2026): Vũ hội — chế độ 👶 Bé 4–6 tuổi (3 động tác đối xứng, giọng đọc, tiếng "bốp", chấm dễ, sao), động tác mới ↔ dang 2 tay.
 - v2.4 (24/11/2026): Vũ hội — công chúa 3D từ mẫu VRoid CC0 + váy dạ hội/vương miện; bộ nhận diện động tác/vỗ tay mới (góc tay, trễ, dùng khuỷu khi tay ra khỏi khung, bắt vỗ nhanh); màn Tập 6 động tác + đo độ trễ vỗ tay.

@@ -332,7 +332,7 @@ export class Renderer {
   /**
    * Cảnh ĐẤU KHỦNG LONG (góc nhìn thứ nhất): khủng long nhìn thẳng vào màn hình, điểm yếu sáng, đá bay tới,
    * khung nhỏ góc trái dưới hiện chính người chơi (để biết mình đang né / ngồi / đỡ).
-   * view: { hands, pip: { it | skel }, react: '⬅ NÉ' … , lost }
+   * view: { hands, person { it, anchorF, anchorD, s } | skel, head, feet, react: '⬅ NÉ' … , lost, hurtAt }
    */
   dinoScene(dt, tSec, dg, view) {
     const { ctx, W, H } = this, u = this.u;
@@ -393,6 +393,18 @@ export class Renderer {
       if (k > 0.3 && a.hit.need) { ctx.font = `900 ${Math.round(34 * u)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = RESP[a.hit.need].color; ctx.fillText(RESP[a.hit.need].icon, bb.x, bb.y - bb.h * 1.05); }
     }
     if (waterLv) drawWaterFront(this, tSec, env, waterLv);
+    // ---- NGƯỜI CHƠI đứng ngay trước con khủng long (đã tách nền, chân chạm đất, né thì dạt theo) ----
+    // vẽ SAU thân khủng long nhưng TRƯỚC vòng điểm yếu / vật bay / hiệu ứng đòn → vẫn thấy chỗ phải đánh và đòn sắp tới
+    const hurtK = view.hurtAt != null ? Math.max(0, 1 - (tSec - view.hurtAt) / 0.5) : 0;
+    if (view.person?.it || view.skel) {
+      const f = view.feet || { x: W / 2, y: H * 0.985 };
+      ctx.save(); ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(f.x, f.y - 4 * u, H * 0.09, H * 0.022, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    }
+    if (view.person?.it) {
+      ctx.save(); if (hurtK > 0) ctx.filter = `sepia(1) saturate(${1 + 5 * hurtK}) hue-rotate(-40deg)`; // trúng đòn: người ửng đỏ
+      this.drawPersonAt(view.person.it, view.person.anchorF, view.person.anchorD, view.person.s, this.mirror);
+      ctx.restore();
+    } else if (view.skel) this.skeleton(view.skel, null, null, tSec, 0.95);
     // hiệu ứng đòn đặc biệt (gắn với lúc chạm, không phụ thuộc pha logic)
     const ls = d.lastStrike, sT = ls ? dg.clock - ls.at : 99, lt = ls?.hit?.tmpl;
     const pre = cur && d.curTo < 0.25 && d.curTo > -0.05 ? cur : null, preT = pre ? -d.curTo : 99; // sắp chạm
@@ -475,25 +487,11 @@ export class Renderer {
       }
       ctx.restore();
     }
-    // khung "BẠN" góc trái dưới
-    const ph = H * 0.28, pw = ph * 0.72, px = 16 * u, py = H - ph - 16 * u;
-    ctx.save();
-    ctx.fillStyle = 'rgba(10,12,30,0.55)'; ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2 * u;
-    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(px, py, pw, ph, 12 * u) : ctx.rect(px, py, pw, ph); ctx.fill(); ctx.stroke(); ctx.clip();
-    const it = view.pip?.it;
-    if (it?.canvas) {
-      const s = Math.min(pw / it.canvas.width, ph * 0.92 / it.canvas.height), dw = it.canvas.width * s, dh = it.canvas.height * s;
-      ctx.translate(px + pw / 2, py + ph - dh - 4 * u); if (this.mirror) ctx.scale(-1, 1);
-      ctx.drawImage(it.canvas, -dw / 2, 0, dw, dh);
-    } else if (view.pip?.skel) {
-      ctx.globalAlpha = 0.9; ctx.strokeStyle = '#7dffb0'; ctx.lineWidth = 3 * u; ctx.lineCap = 'round'; ctx.beginPath();
-      for (const [a, b] of SKELETON) { const P = view.pip.skel[a], Q = view.pip.skel[b]; if (P.v < 0.5 || Q.v < 0.5) continue; ctx.moveTo(px + P.x * pw, py + P.y * ph); ctx.lineTo(px + Q.x * pw, py + Q.y * ph); }
-      ctx.stroke();
+    if (view.react) {
+      const hx = view.head?.x ?? W / 2, hy = Math.max(60 * u, (view.head?.y ?? H * 0.5) - 46 * u);
+      ctx.font = `900 ${Math.round(26 * u)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.lineWidth = 6 * u; ctx.strokeStyle = 'rgba(0,30,10,0.8)'; ctx.strokeText(view.react, hx, hy); ctx.fillStyle = '#7dffb0'; ctx.fillText(view.react, hx, hy);
     }
-    ctx.restore();
-    ctx.font = `800 ${Math.round(18 * u)}px system-ui, sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.fillStyle = '#fff'; ctx.fillText('BẠN', px + 8 * u, py + 6 * u);
-    if (view.react) { ctx.font = `900 ${Math.round(24 * u)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = '#7dffb0'; ctx.fillText(view.react, px + pw / 2, py - 32 * u); }
     if (view.lost) { ctx.font = `900 ${Math.round(40 * u)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#ffd23f'; ctx.fillText('👀 Quay lại khung hình để đấu tiếp', W / 2, H * 0.5); }
     for (const h of view.hands || []) this.blade(h, tSec);
     this.effects(dt);

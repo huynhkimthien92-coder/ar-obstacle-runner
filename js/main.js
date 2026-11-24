@@ -835,6 +835,7 @@ function tilesOver() {
 }
 
 // ---------------- Game "Chém trái cây" ----------------
+const DINO_PERSON = 0.44; // Đấu khủng long: người cao ~44% màn hình, đứng trước khủng long
 const FRUIT_PERSON = 0.3; // người chỉ cao 30% màn hình, đứng ở đáy → bầu trời cao để chém
 const HAND_COLORS = { L: '#00e5ff', R: '#ff9f1c', M: '#7dffb0', L1: '#00e5ff', R1: '#6fb8ff', L2: '#ff9f1c', R2: '#ff5ea8' };
 const DUO_COLORS = ['#00e5ff', '#ff9f1c']; // P1 xanh, P2 cam
@@ -1038,23 +1039,28 @@ function dinoInput(now) {
     const m = app.manual;
     return { hands: pointerHands(now).map(h => Object.assign(h, { color: DINO_HANDS.M })), dodge: m.lane - 1, duck: m.ducking, jump: m.airborne, guard: m.handsUp, present: true };
   }
-  const pl = s.present ? fruitPlace(app.raw, now, app.fslots[0], 0.5) : null;
-  const hands = pl ? cameraHands(pl, now).map(h => Object.assign(h, { color: DINO_HANDS[h.id] || '#fff' })) : [];
-  if (!pl) app.hands = {};
   // né: so với chỗ đứng "gốc" (trôi chậm theo người chơi khi không bị tấn công) → không phải đứng đúng giữa khung
   const busy = dg && ['windup', 'attack'].includes(dg.dino.phase);
   if (app.dinoRef == null || !s.present) app.dinoRef = s.laneX;
   else if (!busy) app.dinoRef += (s.laneX - app.dinoRef) * Math.min(1, (now - (app.dinoRefT || now)) / 2500);
   app.dinoRefT = now;
   const off = s.laneX - app.dinoRef, dodge = off > 0.09 ? 1 : off < -0.09 ? -1 : 0;
+  // người chơi đứng NGAY TRƯỚC con khủng long (giữa sân, chân chạm đất), né sang bên thì hình cũng dạt sang bên
+  const ax = Math.min(0.78, Math.max(0.22, 0.5 + off * 1.6));
+  const pl = s.present ? fruitPlace(app.raw, now, app.fslots[0], ax, renderer.H > renderer.W ? DINO_PERSON * 0.8 : DINO_PERSON, 0.985) : null;
+  app.dinoPl = pl;
+  const hands = pl ? cameraHands(pl, now).map(h => Object.assign(h, { color: DINO_HANDS[h.id] || '#fff' })) : [];
+  if (!pl) app.hands = {};
   return { hands, dodge, duck: s.ducking, jump: s.airborne, guard: s.handsUp, present: s.present };
 }
 function dinoView(now, live = true, inp = null) {
-  const it = app.input === 'camera' ? app.cutouts.items[app.mainIdx] : null;
-  let skel = null;
-  if (!it && app.raw) skel = app.raw.map(q => ({ x: renderer.mirror ? 1 - q.x : q.x, y: q.y, v: q.v }));
+  const pl = app.input === 'camera' && motion.state.present ? app.dinoPl : null;
+  const it = pl ? app.cutouts.items[app.mainIdx] : null;
+  let skel = null, person = null;
+  if (it) person = { it, anchorF: pl.anchorF, anchorD: pl.anchorD, s: pl.s, head: pl.headD };
+  else if (pl && app.raw) skel = app.raw.map(q => { const d = pl.toD(q.x * pl.fw, q.y * pl.fh); return { x: d.x, y: d.y, v: q.v }; });
   const react = inp ? (inp.jump ? '⬆ NHẢY' : inp.dodge < 0 ? '⬅ NÉ' : inp.dodge > 0 ? 'NÉ ➡' : inp.duck ? '⬇ NGỒI' : inp.guard ? '🙌 ĐỠ' : '') : '';
-  return { hands: live && inp ? inp.hands : Object.values(app.hands), pip: app.input === 'camera' ? { it, skel } : null, react, lost: !!inp && !inp.present };
+  return { hands: live && inp ? inp.hands : Object.values(app.hands), person, skel, head: pl?.headD, feet: pl?.anchorD, react, lost: !!inp && !inp.present, hurtAt: app.dinoHurtAt };
 }
 function dinoCountdownFrame(now, dt) {
   const left = Math.ceil((app.countEnd - now) / 1000);
@@ -1095,7 +1101,7 @@ function onDinoEvent(ev) {
     case 'hit': sfx.coin(); r.burst(ev.x, ev.y, ev.gold ? '#ffd23f' : '#ff3b6b', ev.gold ? 30 : 18); r.popup(ev.x, ev.y - 30 * r.u, ev.gold ? `CHÍ MẠNG −${ev.dmg}` : `−${ev.dmg}`, ev.gold ? '#ffd23f' : '#fff', ev.gold ? 1.3 : 1); buzz(25); break;
     case 'smash': sfx.coin(); r.burst(ev.x, ev.y, ev.proj === 'fish' ? '#8fc8e8' : ev.proj === 'lizard' ? '#5fa84a' : '#b9b2a6', 22); r.popup(ev.x, ev.y, 'BỐP!', '#ffb347'); break;
     case 'dodged': r.popup(r.W / 2, r.H * 0.66, 'Phản công!', '#7dffb0', 1.2); break;
-    case 'hurt': sfx.hit(); r.claw = 1; r.shake = 18; r.flash = 0.6; r.flashColor = '200,0,0'; buzz([90, 40, 160]); break;
+    case 'hurt': app.dinoHurtAt = performance.now() / 1000; sfx.hit(); r.claw = 1; r.shake = 18; r.flash = 0.6; r.flashColor = '200,0,0'; buzz([90, 40, 160]); break;
     case 'rage': sfx.roar(); big(ev.level === 2 ? 'ĐIÊN CUỒNG!' : 'NỔI GIẬN!'); r.shake = 12; break;
     case 'tired': r.popup(r.W / 2, r.H * 0.45, 'THỞ DỐC — ĐÁNH ĐI! 💨', '#ffd23f', 1.4); break;
     case 'rest': r.popup(r.W / 2, r.H * 0.45, 'Nó đang thị uy — đánh tự do!', '#7dffb0', 1.1); sfx.roar(); break;
