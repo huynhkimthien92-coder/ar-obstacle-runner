@@ -86,15 +86,15 @@ export class PlayerTracker {
    * @param mapper  hàm đổi toạ độ video → màn hình
    * @param sigOf   (tuỳ chọn) lm → chữ ký màu thân người (torsoSignature)
    */
-  update(all, mapper, W, H, t, sigOf = null) {
+  update(all, mapper, W, H, t, sigOf = null, strict = null) {
     if (this.tick != null) { const d = Math.min(3000, t - this.tick); this.dt = this.dt ? this.dt * 0.9 + d * 0.1 : d; } // nhịp nhận diện
     this.tick = t;
     let dets = (all || []).map((lm, idx) => {
       const ls = lm[LM.L_SH], rs = lm[LM.R_SH];
-      if (!vis(ls, 0.35) || !vis(rs, 0.35)) return null;
+      if (!vis(ls, 0.3) || !vis(rs, 0.3)) return null;
       const a = mapper(ls), b = mapper(rs);
       const vsum = [0, 11, 12, 23, 24, 27, 28].reduce((s, k) => s + (lm[k]?.v || 0), 0);
-      return { lm, idx, c: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, shW: Math.max(4, Math.hypot(a.x - b.x, a.y - b.y)), vsum };
+      return { lm, idx, strict: strict ? strict[idx] !== false : true, c: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, shW: Math.max(4, Math.hypot(a.x - b.x, a.y - b.y)), vsum };
     }).filter(Boolean);
     // khung xương trùng: giữ cái rõ hơn
     dets.sort((a, b) => b.vsum - a.vsum);
@@ -140,7 +140,12 @@ export class PlayerTracker {
 
   _assign(p, det, mapper, W, H, t) {
     // người mới (hoặc mất dấu lâu) phải xuất hiện liên tục ~0,45 s mới tính là có mặt → đồ vật lóe lên không thành "người"
-    if (!p.firstSeen || (!this.keep.has(p.id) && t - p.lastSeen > gapFor(this.dt))) { p.firstSeen = t; p.confirmed = this.keep.has(p.id); }
+    // người đã được nhận mà chỉ khuất ngắn (< 3 s) thì giữ nguyên; người mới chỉ tính thời gian ở các khung rõ mặt (strict)
+    const lostLong = t - p.lastSeen > (p.confirmed ? CHECK.reacquireMs : gapFor(this.dt));
+    if (!p.firstSeen || (!this.keep.has(p.id) && lostLong)) { p.firstSeen = t; p.confirmed = this.keep.has(p.id); }
+    if (!p.confirmed && !det.strict) p.firstSeen = t;
+    if (det.strict) p.lastStrict = t;
+    else if (p.confirmed && !this.keep.has(p.id) && t - (p.lastStrict || t) > CHECK.staleMs) { p.confirmed = false; p.firstSeen = t; } // lâu không rõ mặt → không tính người
     if (t - p.firstSeen >= CHECK.confirmMs) p.confirmed = true;
     // vận tốc (px/giây) để dự đoán vị trí khung sau
     if (p.lastSeen && t - p.lastSeen < 400) {

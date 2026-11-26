@@ -212,7 +212,7 @@ function processPose(now) {
   if (r.masks && ['game', 'fruit', 'dino', 'dance'].includes(renderer.look)) app.cutouts.update(r.frame, r.masks, r.all);
   // người chính phải xuất hiện ổn định ~0,45 s mới tính (lọc đồ vật bị nhận nhầm thoáng qua)
   const fr = app.pose.frame;
-  main = app.gate.update(main, now, fr ? fr.width / fr.height : 16 / 9);
+  main = app.gate.update(main, now, fr ? fr.width / fr.height : 16 / 9, main ? r.strict?.[r.all.indexOf(main)] ?? true : true);
   if (!main) app.mainIdx = -1;
   const sm = smoother.apply(main, now);
   app.raw = sm;
@@ -221,7 +221,7 @@ function processPose(now) {
   if (isTiles() || isFruit()) {
     // chữ ký màu áo từng người → 2 người đứng sát nhau không bị tráo ID
     const fc = app.pose.fctx, f = r.frame, sigOf = fc && r.all.length > 1 ? lm => torsoSignature(fc, f.width, f.height, lm) : null;
-    app.tracker.update(r.all, app.mapper, renderer.W, renderer.H, now, sigOf);
+    app.tracker.update(r.all, app.mapper, renderer.W, renderer.H, now, sigOf, r.strict);
   }
   updateWorld();
   if (isDance()) { app.rawScr = main ? main.map(app.mapper) : null; if (app.mode === 'dance') detectClap(r.ts); }

@@ -4,6 +4,9 @@
 //     và nếu có mặt nạ tách người thì phần ngực / đầu phải nằm trong mặt nạ).
 //  2) PresenceGate: người mới xuất hiện phải "đứng vững" liên tục ~0,45 s, khung xương không nhảy loạn,
 //     mới được tính là có người. Vật thể thường chỉ lóe lên vài khung hình hoặc rung giật mạnh.
+// QUAN TRỌNG: kiểm tra CHẶT chỉ dùng để NHẬN người mới. Người ĐANG chơi chỉ cần qua kiểm tra DỄ (keepPerson: thấy vai,
+// thân hợp lý) — vì lúc cúi, ngồi, xoay, giơ tay che mặt, chạy nhanh bị nhoè, phòng tối… mặt thường mờ đi.
+// Mất dấu ngắn (< 3 s) rồi hiện lại gần chỗ cũ → nhận lại ngay, không bắt xác nhận lại.
 // Thuần logic → test bằng Node.
 
 export const CHECK = {
@@ -15,7 +18,31 @@ export const CHECK = {
   confirmMs: 450,      // người mới phải xuất hiện liên tục chừng này mới tính
   gapMs: 600,          // mất dấu lâu hơn (hoặc hơn 2,5 lần nhịp nhận diện, máy chậm) → lần sau phải xác nhận lại
   jitterMax: 0.45,     // độ giật trung bình mỗi khung (theo bề rộng vai) khi đang xác nhận
+  keepVis: 0.3,        // giữ người đang chơi: 2 vai rõ tối thiểu mức này (hoặc 1 vai + 2 hông)
+  reacquireMs: 3000,   // mất dấu ngắn hơn chừng này + hiện lại gần chỗ cũ → nhận lại ngay
+  reacquireDist: 2.2,  // "gần chỗ cũ": vai giữa lệch < 2,2 × bề rộng vai (hoặc < 25% khung)
+  staleMs: 10000,      // người đang chơi phải rõ mặt ít nhất 1 lần / 10 s (đồ vật đứng thế chỗ người vừa đi thì không bao giờ rõ mặt)
 };
+
+/**
+ * Kiểm tra DỄ cho người đã được nhận (đang chơi): chỉ cần thấy vai và khung xương không vô lý. Không đòi thấy mặt, không đòi mặt nạ.
+ */
+export function keepPerson(lm, ar = 16 / 9, cfg = CHECK) {
+  if (!lm || lm.length < 25) return { ok: false, reason: 'thiếu điểm' };
+  const ls = lm[11], rs = lm[12], lh = lm[23], rh = lm[24];
+  const both = vis(ls, cfg.keepVis) && vis(rs, cfg.keepVis), oneHip = (vis(ls, cfg.keepVis) || vis(rs, cfg.keepVis)) && vis(lh, 0.4) && vis(rh, 0.4);
+  if (!both && !oneHip) return { ok: false, reason: 'không thấy vai' };
+  const P = p => ({ x: p.x * ar, y: p.y });
+  const a = P(ls), b = P(rs), shW = Math.hypot(a.x - b.x, a.y - b.y);
+  const hipsSeen = vis(lh, 0.4) && vis(rh, 0.4);
+  const torso = hipsSeen ? Math.hypot((P(lh).x + P(rh).x - a.x - b.x) / 2, (P(lh).y + P(rh).y - a.y - b.y) / 2) : 0;
+  const S = Math.max(shW, torso * 0.5);
+  if (S < cfg.minShoulder * ar * 0.6) return { ok: false, reason: 'quá nhỏ' };
+  for (const [s0, e] of [[11, 13], [12, 14]]) {
+    if (vis(lm[e], 0.6) && vis(lm[s0], cfg.keepVis)) { const A = P(lm[s0]), B = P(lm[e]); if (Math.hypot(A.x - B.x, A.y - B.y) > 3 * S) return { ok: false, reason: 'tay sai tỉ lệ' }; }
+  }
+  return { ok: true, reason: '' };
+}
 
 const vis = (p, m) => !!p && (p.v ?? 1) >= m;
 
@@ -76,15 +103,29 @@ export const gapFor = (dtEma, cfg = CHECK) => Math.max(cfg.gapMs, 2.5 * (dtEma |
 
 export class PresenceGate {
   constructor(cfg = CHECK) { this.cfg = cfg; this.reset(); }
-  reset() { this.since = 0; this.last = 0; this.confirmed = false; this.prev = null; this.jit = 0; this.nJit = 0; this.dt = 0; this.tick = null; }
-  update(lm, t, ar = 16 / 9) {
+  reset() { this.since = 0; this.last = 0; this.confirmed = false; this.prev = null; this.jit = 0; this.nJit = 0; this.dt = 0; this.tick = null; this.lastGood = null; this.lastStrict = 0; }
+  /**
+   * @param lm      khung xương (đã qua kiểm tra DỄ) hoặc null
+   * @param strict  khung này có qua kiểm tra CHẶT không (rõ mặt, đúng mặt nạ…) — chỉ cần khi nhận người MỚI
+   */
+  update(lm, t, ar = 16 / 9, strict = true) {
     const c = this.cfg;
     if (this.tick != null) { const d = Math.min(3000, t - this.tick); this.dt = this.dt ? this.dt * 0.9 + d * 0.1 : d; } // nhịp nhận diện
     this.tick = t;
     const gap = gapFor(this.dt, c);
-    if (!lm) { if (t - this.last > gap) { this.confirmed = false; this.since = 0; this.prev = null; } return null; }
-    if (this.last && t - this.last > gap) { this.confirmed = false; this.since = 0; this.prev = null; }
+    if (!lm) { if (this.confirmed && t - this.last > gap) { this.confirmed = false; this.since = 0; this.prev = null; } else if (!this.confirmed && t - this.last > gap) { this.since = 0; this.prev = null; } return null; }
     const cur = { x: ((lm[11].x + lm[12].x) / 2) * ar, y: (lm[11].y + lm[12].y) / 2, w: Math.hypot((lm[11].x - lm[12].x) * ar, lm[11].y - lm[12].y) || 1e-3, nx: lm[0].x * ar, ny: lm[0].y };
+    if (strict) this.lastStrict = t;
+    if (this.confirmed && !strict && t - this.lastStrict > c.staleMs) { this.confirmed = false; this.lastGood = null; this.since = 0; this.prev = null; return null; } // lâu quá không thấy mặt → coi như không phải người
+    // người đang chơi vừa khuất ngắn rồi hiện lại gần chỗ cũ → nhận lại ngay (không cần rõ mặt, không chờ xác nhận)
+    const G = this.lastGood;
+    if (G && t - this.lastStrict <= c.staleMs && t - G.t < c.reacquireMs && Math.hypot(cur.x - G.x, cur.y - G.y) < Math.max(c.reacquireDist * Math.max(G.w, cur.w), 0.25 * ar)) {
+      this.confirmed = true; this.prev = cur; this.last = t; this.since = this.since || t;
+      this.lastGood = { x: cur.x, y: cur.y, w: cur.w, t };
+      return lm;
+    }
+    if (this.last && t - this.last > gap) { this.confirmed = false; this.since = 0; this.prev = null; }
+    if (!this.confirmed && !strict) { this.since = 0; this.prev = null; return null; } // người MỚI phải rõ mặt mới bắt đầu tính
     if (!this.since) { this.since = t; this.jit = 0; this.nJit = 0; }
     if (!this.confirmed && this.prev) {
       // độ giật: vai giữa + mũi + bề rộng vai thay đổi bao nhiêu so với khung trước, theo bề rộng vai
@@ -96,6 +137,7 @@ export class PresenceGate {
       if (this.nJit >= 2 && this.jit / this.nJit > c.jitterMax) { this.since = t; this.jit = 0; this.nJit = 0; return null; } // rung loạn → xác nhận lại từ đầu
       this.confirmed = true;
     }
+    if (this.confirmed) this.lastGood = { x: cur.x, y: cur.y, w: cur.w, t };
     return this.confirmed ? lm : null;
   }
 }
